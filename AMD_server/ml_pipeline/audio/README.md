@@ -435,6 +435,6 @@ Options:
 ## Support
 
 For issues or questions:
-- Check database connection: `psql -h 134.199.202.8 -U paralegal_user -d paralegal_db`
+- Check database connection: `psql -h $DB_HOST -U $DB_USER -d $DB_NAME`
 - Verify API key: `echo $OPENAI_API_KEY`
 - Review logs: Detailed error messages printed to console

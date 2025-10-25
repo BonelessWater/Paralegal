@@ -32,28 +32,30 @@ class AudioLoader:
     
     def __init__(
         self,
-        host: str = "134.199.202.8",
+        host: str = None,
         port: int = 5432,
-        database: str = "paralegal_db",
-        user: str = "paralegal_user",
-        password: str = "hackathon2024"
+        database: str = None,
+        user: str = None,
+        password: str = None
     ):
         """
         Initialize AudioLoader with database credentials.
         
         Args:
-            host: PostgreSQL server hostname
+            host: PostgreSQL server hostname (default: from env or config)
             port: PostgreSQL server port
-            database: Database name
-            user: Database username
-            password: Database password
+            database: Database name (default: from env or config)
+            user: Database username (default: from env or config)
+            password: Database password (default: from env or config)
         """
+        # Use environment variables or defaults
+        import os
         self.db_config = {
-            'host': host,
+            'host': host or os.getenv('DB_HOST', 'localhost'),
             'port': port,
-            'database': database,
-            'user': user,
-            'password': password
+            'database': database or os.getenv('DB_NAME', 'paralegal_db'),
+            'user': user or os.getenv('DB_USER', 'paralegal_user'),
+            'password': password or os.getenv('DB_PASSWORD', '')
         }
         self.conn = None
     

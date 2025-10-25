@@ -45,23 +45,29 @@ class TranscriptionPipeline:
     def __init__(
         self,
         api_key: str = None,
-        db_host: str = "134.199.202.8",
+        db_host: str = None,
         db_port: int = 5432,
-        db_name: str = "paralegal_db",
-        db_user: str = "paralegal_user",
-        db_password: str = "hackathon2024"
+        db_name: str = None,
+        db_user: str = None,
+        db_password: str = None
     ):
         """
         Initialize transcription pipeline.
         
         Args:
             api_key: OpenAI API key (reads from env if not provided)
-            db_host: PostgreSQL host
+            db_host: PostgreSQL host (reads from env if not provided)
             db_port: PostgreSQL port
-            db_name: Database name
-            db_user: Database username
-            db_password: Database password
+            db_name: Database name (reads from env if not provided)
+            db_user: Database username (reads from env if not provided)
+            db_password: Database password (reads from env if not provided)
         """
+        # Get credentials from environment if not provided
+        db_host = db_host or os.getenv('DB_HOST', 'localhost')
+        db_name = db_name or os.getenv('DB_NAME', 'paralegal_db')
+        db_user = db_user or os.getenv('DB_USER', 'paralegal_user')
+        db_password = db_password or os.getenv('DB_PASSWORD', '')
+        
         # Initialize components
         self.loader = AudioLoader(db_host, db_port, db_name, db_user, db_password)
         self.transcriber = WhisperAPITranscriber(api_key=api_key)
