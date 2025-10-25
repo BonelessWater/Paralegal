@@ -128,50 +128,11 @@ echo -e "${YELLOW}[6/6] Creating configuration file...${NC}"
 
 cd ~/Paralegal/scraper
 
-# Create config.ini from example if it doesn't exist
+# Copy config example file
 if [ ! -f config.ini ]; then
-    cat > config.ini << 'EOF'
-# Configuration file for LexisNexis Scraper
-
-[lexisnexis]
-# Your LexisNexis credentials
-username = Albert0898
-password = Lexisme98!
-
-# Base URL for LexisNexis Advance
-base_url = https://advance.lexis.com
-
-# Search configuration
-search_query = law firm data compliance
-max_results = 100
-results_per_page = 25
-
-[database]
-# PostgreSQL connection details
-host = localhost
-port = 5432
-database = paralegal_db
-username = paralegal_user
-password = hackathon2024
-schema = legal_data
-
-[scraping]
-# Delays between requests (in seconds) to avoid overwhelming the server
-request_delay = 2.0
-max_retries = 3
-timeout = 30
-
-# User agent to use for requests
-user_agent = Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
-
-[logging]
-# Logging configuration
-log_level = INFO
-log_file = scraper.log
-log_format = %%(asctime)s - %%(name)s - %%(levelname)s - %%(message)s
-EOF
-
+    cp config.ini.example config.ini
     echo -e "${GREEN}✓ Configuration file created: scraper/config.ini${NC}"
+    echo -e "${YELLOW}⚠ IMPORTANT: Edit scraper/config.ini and add your credentials!${NC}"
 else
     echo -e "${GREEN}✓ Configuration file already exists${NC}"
 fi
@@ -192,12 +153,8 @@ echo "  Database: paralegal_db"
 echo "  User:     paralegal_user"
 echo "  Password: hackathon2024"
 echo ""
-echo "LexisNexis Credentials (in config.ini):"
-echo "  Username: Albert0898"
-echo "  Password: Lexisme98!"
-echo ""
 echo "Next Steps:"
-echo "  1. Edit scraper/config.ini if needed (credentials are already set)"
+echo "  1. IMPORTANT: Edit scraper/config.ini and add your LexisNexis credentials"
 echo "  2. Test the scraper:"
 echo "     cd ~/Paralegal/scraper"
 echo "     python test_scraper.py"

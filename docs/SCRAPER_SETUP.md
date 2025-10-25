@@ -87,8 +87,8 @@ The scraper configuration is in `scraper/config.ini`:
 
 ```ini
 [lexisnexis]
-username = Albert0898
-password = Lexisme98!
+username = YOUR_LEXISNEXIS_USERNAME
+password = YOUR_LEXISNEXIS_PASSWORD
 search_query = law firm data compliance
 max_results = 100
 
@@ -99,9 +99,10 @@ username = paralegal_user
 password = hackathon2024
 ```
 
-**To change search query or credentials:**
+**IMPORTANT: Add your credentials:**
 ```bash
 nano ~/Paralegal/scraper/config.ini
+# Edit the [lexisnexis] section with your actual credentials
 ```
 
 ---
