@@ -3,8 +3,8 @@
 
 [lexisnexis]
 # Your LexisNexis credentials
-username = Albert0898
-password = Lexisme98!
+username = YOUR_LEXISNEXIS_USERNAME
+password = YOUR_LEXISNEXIS_PASSWORD
 
 # Base URL for LexisNexis Advance
 base_url = https://advance.lexis.com
