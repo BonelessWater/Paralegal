@@ -154,7 +154,7 @@ class LocalTranscriptionPipeline:
         print("Loading audio files from database...")
         print("-" * 70)
         
-        audio_files = self.loader.load_all_audio()
+        audio_files = self.loader.load_audio_recordings()
         
         if not audio_files:
             print("\n⚠️  No audio files found in database")
