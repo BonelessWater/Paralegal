@@ -156,18 +156,18 @@ class MorganFileLoader:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO legal_data.law_firms 
-            (firm_name, headquarters_location, website, practice_areas)
+            (firm_name, city, state, website)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (firm_name) DO UPDATE SET
-                headquarters_location = EXCLUDED.headquarters_location,
-                website = EXCLUDED.website,
-                practice_areas = EXCLUDED.practice_areas
+                city = EXCLUDED.city,
+                state = EXCLUDED.state,
+                website = EXCLUDED.website
             RETURNING id
         """, (
             'Morgan & Morgan',
-            'Orlando, Florida',
-            'https://www.forthepeople.com',
-            ['Personal Injury', 'Auto Accidents', 'Medical Malpractice']
+            'Orlando',
+            'Florida',
+            'https://www.forthepeople.com'
         ))
         
         firm_id = cursor.fetchone()[0]
