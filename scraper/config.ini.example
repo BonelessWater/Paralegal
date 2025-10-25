@@ -1,0 +1,39 @@
+# Configuration file for LexisNexis Scraper
+# Copy this file to config.ini and fill in your actual credentials
+
+[lexisnexis]
+# Your LexisNexis credentials
+username = Albert0898
+password = Lexisme98!
+
+# Base URL for LexisNexis Advance
+base_url = https://advance.lexis.com
+
+# Search configuration
+search_query = law firm data compliance
+max_results = 100
+results_per_page = 25
+
+[database]
+# PostgreSQL connection details
+host = localhost
+port = 5432
+database = paralegal_db
+username = postgres
+password = your_db_password
+schema = legal_data
+
+[scraping]
+# Delays between requests (in seconds) to avoid overwhelming the server
+request_delay = 2.0
+max_retries = 3
+timeout = 30
+
+# User agent to use for requests
+user_agent = Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+
+[logging]
+# Logging configuration
+log_level = INFO
+log_file = scraper.log
+log_format = %%(asctime)s - %%(name)s - %%(levelname)s - %%(message)s
