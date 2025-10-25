@@ -87,64 +87,68 @@ The `legal_data` schema stores documents scraped from LexisNexis Advance, includ
 ### Tables
 
 #### 1. `search_sessions`
-Tracks scraping sessions for reproducibility.
+Tracks scraping sessions and data import sessions for reproducibility.
 
 ```sql
 CREATE TABLE legal_data.search_sessions (
     id SERIAL PRIMARY KEY,
-    search_query TEXT NOT NULL,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    search_query TEXT,
+    search_url TEXT,
     total_results INTEGER,
-    results_scraped INTEGER,
-    scraper_version VARCHAR(50)
+    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(50),
+    notes TEXT
 );
 ```
 
 **Fields:**
 - `id`: Unique session identifier
-- `search_query`: Search terms used in LexisNexis
-- `timestamp`: When scraping started
+- `search_query`: Search terms used (for LexisNexis scraping)
+- `search_url`: URL of the search source
 - `total_results`: Total matches found
-- `results_scraped`: Number successfully downloaded
-- `scraper_version`: Version of scraper tool
+- `scraped_at`: When scraping/import started
+- `status`: 'completed', 'failed', 'in_progress', etc.
+- `notes`: Additional session information
 
 ---
 
 #### 2. `documents`
-Core table storing legal documents.
+Core table storing legal documents, case files, and imported documents.
 
 ```sql
 CREATE TABLE legal_data.documents (
     id SERIAL PRIMARY KEY,
     session_id INTEGER REFERENCES legal_data.search_sessions(id),
+    document_id VARCHAR(255) UNIQUE NOT NULL,
     title TEXT NOT NULL,
     document_type VARCHAR(100),
     jurisdiction VARCHAR(100),
+    court VARCHAR(255),
     decision_date DATE,
-    court_name TEXT,
-    case_number VARCHAR(100),
     citation TEXT,
+    url TEXT,
     summary TEXT,
     full_text TEXT,
-    source_url TEXT,
-    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 **Fields:**
-- `id`: Unique document identifier
-- `session_id`: Links to search session
+- `id`: Unique internal identifier (auto-incrementing)
+- `session_id`: Links to search/import session
+- `document_id`: Unique document identifier (e.g., case_number-hash for Morgan & Morgan files)
 - `title`: Document title/case name
-- `document_type`: 'Case Law', 'Article', 'Statute', etc.
+- `document_type`: 'Case Law', 'Police Report', 'Settlement Offer', 'PIP Document', 'Audio Recording', etc.
 - `jurisdiction`: 'Federal', 'State: California', etc.
+- `court`: Court name that issued decision
 - `decision_date`: Date of ruling/publication
-- `court_name`: Court that issued decision
-- `case_number`: Docket/case number
 - `citation`: Legal citation (e.g., "123 F.3d 456")
+- `url`: Source URL or file path
 - `summary`: Document summary/headnotes
-- `full_text`: Complete document text
-- `source_url`: LexisNexis URL
-- `scraped_at`: Download timestamp
+- `full_text`: Complete document text (extracted from PDFs)
+- `created_at`: When document was created/imported
+- `updated_at`: When document was last modified
 
 **Indexes:**
 ```sql
@@ -152,6 +156,7 @@ CREATE INDEX idx_documents_session ON legal_data.documents(session_id);
 CREATE INDEX idx_documents_type ON legal_data.documents(document_type);
 CREATE INDEX idx_documents_date ON legal_data.documents(decision_date);
 CREATE INDEX idx_documents_jurisdiction ON legal_data.documents(jurisdiction);
+CREATE INDEX idx_documents_document_id ON legal_data.documents(document_id);
 ```
 
 ---
@@ -162,19 +167,25 @@ Master table of law firms.
 ```sql
 CREATE TABLE legal_data.law_firms (
     id SERIAL PRIMARY KEY,
-    firm_name VARCHAR(255) UNIQUE NOT NULL,
-    headquarters_location VARCHAR(255),
+    firm_name VARCHAR(500) UNIQUE NOT NULL,
+    address VARCHAR(500),
+    city VARCHAR(255),
+    state VARCHAR(100),
+    country VARCHAR(100),
     website VARCHAR(255),
-    practice_areas TEXT[]
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 **Fields:**
 - `id`: Unique firm identifier
 - `firm_name`: Full law firm name (unique)
-- `headquarters_location`: City, State
+- `address`: Street address
+- `city`: City location
+- `state`: State/province
+- `country`: Country
 - `website`: Firm website URL
-- `practice_areas`: Array of specializations
+- `created_at`: When firm record was created
 
 **Index:**
 ```sql
@@ -190,21 +201,21 @@ Junction table linking documents to law firms.
 CREATE TABLE legal_data.document_law_firms (
     id SERIAL PRIMARY KEY,
     document_id INTEGER REFERENCES legal_data.documents(id) ON DELETE CASCADE,
-    firm_id INTEGER REFERENCES legal_data.law_firms(id) ON DELETE CASCADE,
+    law_firm_id INTEGER REFERENCES legal_data.law_firms(id) ON DELETE CASCADE,
     role VARCHAR(100),
-    UNIQUE(document_id, firm_id)
+    UNIQUE(document_id, law_firm_id, role)
 );
 ```
 
 **Fields:**
 - `document_id`: Reference to document
-- `firm_id`: Reference to law firm
-- `role`: 'Plaintiff', 'Defendant', 'Counsel', 'Amicus', etc.
+- `law_firm_id`: Reference to law firm
+- `role`: 'Plaintiff Counsel', 'Defendant Counsel', 'Amicus', etc.
 
 **Indexes:**
 ```sql
 CREATE INDEX idx_doc_firms_document ON legal_data.document_law_firms(document_id);
-CREATE INDEX idx_doc_firms_firm ON legal_data.document_law_firms(firm_id);
+CREATE INDEX idx_doc_firms_firm ON legal_data.document_law_firms(law_firm_id);
 ```
 
 ---
@@ -532,6 +543,111 @@ These datasets train the **Evidence Sorter Agent** on document classification an
 
 ---
 
+## Morgan & Morgan Case Files
+
+### Overview
+Real-world legal case files from Morgan & Morgan law firm, loaded into the database for AI agent training and demonstration.
+
+### Statistics
+- **Cases**: 4 active personal injury cases
+- **Total Documents**: 54 files
+- **PDFs Processed**: 34 (with text extraction)
+- **Audio Recordings**: 16 client call recordings
+- **Session ID**: 5
+
+### Case Files
+
+#### File 1: Case #12564888
+- **Documents**: 4 files
+- **Types**: Police Report, PIP payout, Settlement Offer, Property Damage
+- **Key Content**: Crash report, insurance payouts, property damage estimates
+
+#### File 2: Case #9232459
+- **Documents**: 5 files
+- **Types**: Police Reports, Property Damage, Total Loss Estimates
+- **Key Content**: Crash documentation, vehicle total loss, property damage estimates
+
+#### File 3: Case #11869964
+- **Documents**: 36 files (largest case)
+- **Types**: Settlement Offers (8), Audio Recordings (7), PIP Documents, Medical Liens, Insurance Policies, Property Damage
+- **Key Content**:
+  - Settlement negotiation sequence: $22k → $24k → $25k → $28k
+  - Client call recordings (first call, follow-ups, demand discussions)
+  - Medicare and Optum medical liens
+  - Progressive and Geico insurance policies and declarations
+  - PIP exhaustion letters
+- **Audio Files**: First call, 2nd call, 3rd call, 4th call, call about demand, call about CRN, call about tender, 5 days after demand, call about offer
+
+#### File 4: Case #9840025
+- **Documents**: 9 files
+- **Types**: Settlement Offers, Audio Recordings, Police Report, PIP Documents
+- **Key Content**:
+  - Settlement offer from Auto-Owners Insurance ($18k)
+  - Client call recordings (first call through 4th call)
+  - Police crash report
+  - PIP payment logs
+- **Audio Files**: First call, 2nd call, 3rd call, 4th call, call about demand, low offer lawsuit discussion
+
+### Document Type Breakdown
+
+| Document Type | Count | Use Case |
+|---------------|-------|----------|
+| Settlement Offer | 11 | Train negotiation pattern recognition |
+| Audio Recording | 10 | Client communication transcription |
+| Legal Document | 9 | General legal document classification |
+| Medical Lien | 4 | Healthcare billing and liens |
+| PIP Document | 4 | Personal Injury Protection claims |
+| Police Report | 4 | Incident documentation |
+| Other Document | 4 | Photos and miscellaneous |
+| Property Damage | 3 | Vehicle damage assessment |
+| Demand Letter | 3 | Legal demand documentation |
+| Insurance Document | 1 | Policy information |
+| Tender Document | 1 | Insurance tender offers |
+
+### AI Training Applications
+
+**Legal Researcher Agent:**
+- Study settlement negotiation patterns
+- Analyze PIP claim workflows
+- Research medical lien handling
+
+**Evidence Sorter Agent:**
+- Document classification (police reports vs. settlement offers vs. liens)
+- Text extraction from scanned PDFs
+- File organization by case and document type
+
+**Client Communication Agent:**
+- Audio transcription of client calls (16 recordings)
+- Timeline reconstruction (first call → follow-ups → demand → settlement)
+- Communication pattern analysis
+
+**Records Agent:**
+- Track Morgan & Morgan firm involvement
+- Link documents to specific cases
+- Maintain case file organization
+
+### Query Examples
+
+```sql
+-- Get all Morgan & Morgan documents
+SELECT document_type, COUNT(*) 
+FROM legal_data.documents 
+WHERE session_id = 5 
+GROUP BY document_type;
+
+-- Find settlement offers with amounts
+SELECT title, document_type, LEFT(full_text, 200)
+FROM legal_data.documents
+WHERE document_type = 'Settlement Offer' AND session_id = 5;
+
+-- Get audio recordings for transcription
+SELECT document_id, title, url
+FROM legal_data.documents
+WHERE document_type = 'Audio Recording' AND session_id = 5;
+```
+
+---
+
 ## Dataset Storage Summary
 
 | Category | Datasets | Est. Total Size | Primary Agent |
@@ -539,15 +655,21 @@ These datasets train the **Evidence Sorter Agent** on document classification an
 | Healthcare/Veterans | 4 | 20-30 MB | Legal Researcher |
 | Document OCR | 6 | 10-14 GB | Evidence Sorter |
 | Audio | 1 | 3-5 GB | Client Comm |
-| **TOTAL** | **11** | **~15-20 GB** | All Agents |
+| **Morgan & Morgan** | **4 cases** | **46 MB (54 files)** | **All Agents** |
+| **TOTAL** | **11 + 4 cases** | **~15-20 GB** | All Agents |
 
-**Download Time Estimates:**
+**Note**: Two datasets failed to download and were removed:
+- ~~CMS Medicare Open Payments~~ (download error)
+- ~~Denoising Dirty Documents~~ (not found on Kaggle)
+
+**Download Time Estimates (Kaggle datasets only):**
 - Sequential (1 worker): 30-60 minutes
 - Parallel (8 workers): 5-10 minutes
 - Parallel (16 workers): 3-7 minutes
 - Parallel (32 workers): 2-5 minutes
 
-**Storage Location**: `~/Paralegal/scraper/kaggle_datasets/`
+**Storage Location**: `~/Paralegal/scraper/kaggle_datasets/`  
+**Morgan & Morgan Files**: `~/Morgan&Morgan/` (uploaded to AMD server)
 
 ---
 
@@ -568,7 +690,7 @@ ORDER BY decision_date DESC;
 SELECT d.title, d.document_type, d.decision_date, dlf.role
 FROM legal_data.documents d
 JOIN legal_data.document_law_firms dlf ON d.id = dlf.document_id
-JOIN legal_data.law_firms lf ON dlf.firm_id = lf.id
+JOIN legal_data.law_firms lf ON dlf.law_firm_id = lf.id
 WHERE lf.firm_name LIKE '%Morgan & Morgan%';
 ```
 
@@ -588,6 +710,22 @@ SELECT * FROM legal_data.documents_summary
 WHERE document_type = 'Case Law'
 ORDER BY decision_date DESC
 LIMIT 10;
+```
+
+#### Get Morgan & Morgan case documents
+```sql
+SELECT d.document_id, d.title, d.document_type, d.created_at
+FROM legal_data.documents d
+WHERE d.session_id = 5
+ORDER BY d.document_type, d.title;
+```
+
+#### Find settlement offers
+```sql
+SELECT title, LEFT(full_text, 200) as preview
+FROM legal_data.documents
+WHERE document_type = 'Settlement Offer'
+ORDER BY created_at DESC;
 ```
 
 #### Count documents by type
@@ -899,11 +1037,19 @@ datasets Schema:
 
 ### Version History
 
+- **v2.0** (2025-10-25): Schema corrections and Morgan & Morgan integration
+  - Fixed all table schemas to match actual database implementation
+  - Corrected column names: document_id, url, court, law_firm_id, created_at, updated_at
+  - Added Morgan & Morgan case files (54 documents, 4 cases)
+  - Removed failed Kaggle datasets (CMS Medicare, Denoising Dirty Documents)
+  - Updated to 11 successfully downloaded Kaggle datasets
+  - Added comprehensive Morgan & Morgan documentation section
+  
 - **v1.0** (2025-10-25): Initial database setup
   - PostgreSQL 16 installation
   - Legal data schema (7 tables + 1 view)
   - Kaggle datasets schema (2 tables)
-  - 13 Kaggle datasets integrated
+  - 13 Kaggle datasets attempted (11 successful)
 
 ---
 
