@@ -1,2 +1,21 @@
 .env
 venv
+
+# Local credentials (NEVER commit these!)
+SERVER_CREDENTIALS_LOCAL.txt
+*_CREDENTIALS_LOCAL.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Logs
+logs/
+*.log
+
+# Data directories
+data/
+models/
