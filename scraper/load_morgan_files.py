@@ -217,22 +217,22 @@ class MorganFileLoader:
             # Use first 500 characters as summary
             summary = full_text[:500] + '...' if len(full_text) > 500 else full_text
         
-        # Insert document
+        # Insert document - using actual column names from schema
         cursor = conn.cursor()
         try:
             cursor.execute("""
                 INSERT INTO legal_data.documents
-                (session_id, title, document_type, case_number, summary, full_text, source_url)
+                (session_id, document_id, title, document_type, summary, full_text, url)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 session_id,
+                case_number,  # document_id field stores case number
                 title,
                 doc_type,
-                case_number,
                 summary,
                 full_text,
-                str(file_path.absolute())
+                str(file_path.absolute())  # url field stores file path
             ))
             
             doc_id = cursor.fetchone()[0]
@@ -257,9 +257,9 @@ class MorganFileLoader:
         try:
             cursor.execute("""
                 INSERT INTO legal_data.document_law_firms
-                (document_id, firm_id, role)
+                (document_id, law_firm_id, role)
                 VALUES (%s, %s, %s)
-                ON CONFLICT (document_id, firm_id) DO NOTHING
+                ON CONFLICT (document_id, law_firm_id, role) DO NOTHING
             """, (doc_id, firm_id, 'Plaintiff Counsel'))
             
             conn.commit()
