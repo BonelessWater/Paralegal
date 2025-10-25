@@ -27,6 +27,10 @@ scikit-learn>=1.3.0
 pandas>=2.0.0
 numpy>=1.24.0
 
+# RAG & Semantic Search
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4  # Use faiss-gpu if you have CUDA
+
 # OpenAI API (Whisper transcription, GPT, etc.)
 openai>=1.3.0
 
