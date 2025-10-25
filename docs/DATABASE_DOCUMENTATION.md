@@ -427,7 +427,7 @@ CREATE INDEX idx_dataset_files_dataset ON datasets.dataset_files(dataset_id);
 
 ## Dataset Catalog
 
-### Healthcare & Veterans Datasets (5 datasets)
+### Healthcare & Veterans Datasets (4 datasets)
 
 #### 1. VHA Hospitals Timely Care Data
 - **Kaggle Path**: `thedevastator/vha-hospitals-timely-care-data`
@@ -437,15 +437,7 @@ CREATE INDEX idx_dataset_files_dataset ON datasets.dataset_files(dataset_id);
 - **Use Case**: Train Legal Researcher Agent on healthcare compliance cases
 - **Key Fields**: Hospital metrics, care quality indicators, patient outcomes
 
-#### 2. CMS Medicare
-- **Kaggle Path**: `bigquery/cms-medicare`
-- **Category**: Healthcare
-- **Size**: ~50-100 MB
-- **Description**: Hospital General Information (7,596 hospitals registered with Medicare)
-- **Use Case**: Veterans healthcare legal research
-- **Key Fields**: Hospital names, locations, ownership, services, quality ratings
-
-#### 3. Veteran Employment Outcomes
+#### 2. Veteran Employment Outcomes
 - **Kaggle Path**: `mpwolke/cusersmarildownloadsvetcsv`
 - **Category**: Veterans
 - **Size**: ~1-5 MB
@@ -453,7 +445,7 @@ CREATE INDEX idx_dataset_files_dataset ON datasets.dataset_files(dataset_id);
 - **Use Case**: Legal cases involving veteran employment discrimination
 - **Key Fields**: Age groups, employment status, demographic breakdowns
 
-#### 4. Veterans Lung Cancer Clinical Trial
+#### 3. Veterans Lung Cancer Clinical Trial
 - **Kaggle Path**: `harivpatel/veterans-lung-cancer-clinical-trial-dataset`
 - **Category**: Medical
 - **Size**: ~1-2 MB
@@ -461,7 +453,7 @@ CREATE INDEX idx_dataset_files_dataset ON datasets.dataset_files(dataset_id);
 - **Use Case**: Medical malpractice and VA healthcare litigation research
 - **Key Fields**: Treatment groups, survival times, patient characteristics
 
-#### 5. US Hospital Locations
+#### 4. US Hospital Locations
 - **Kaggle Path**: `andrewmvd/us-hospital-locations`
 - **Category**: Healthcare
 - **Size**: ~5-10 MB
@@ -471,11 +463,11 @@ CREATE INDEX idx_dataset_files_dataset ON datasets.dataset_files(dataset_id);
 
 ---
 
-### Document OCR Datasets (7 datasets)
+### Document OCR Datasets (6 datasets)
 
 These datasets train the **Evidence Sorter Agent** on document classification and text extraction.
 
-#### 6. RVLCDIP
+#### 5. RVLCDIP
 - **Kaggle Path**: `abdellatifsassioui/rvlcdip`
 - **Category**: Document OCR
 - **Size**: ~400-800 MB
@@ -483,7 +475,7 @@ These datasets train the **Evidence Sorter Agent** on document classification an
 - **Use Case**: Train Evidence Sorter to classify legal document types
 - **Classes**: Letter, form, email, handwritten, advertisement, scientific report, scientific publication, specification, file folder, news article, budget, invoice, presentation, questionnaire, resume, memo
 
-#### 7. FUNSD
+#### 6. FUNSD
 - **Kaggle Path**: `aravindram11/funsdform-understanding-noisy-scanned-documents`
 - **Category**: Document OCR
 - **Size**: ~30-50 MB
@@ -491,7 +483,7 @@ These datasets train the **Evidence Sorter Agent** on document classification an
 - **Use Case**: Extract structured data from legal forms (intake forms, court documents)
 - **Key Features**: Entity recognition, form structure understanding, noisy document handling
 
-#### 8. SROIE Dataset v2
+#### 7. SROIE Dataset v2
 - **Kaggle Path**: `urbikn/sroie-datasetv2`
 - **Category**: Document OCR
 - **Size**: ~100-200 MB
@@ -499,7 +491,7 @@ These datasets train the **Evidence Sorter Agent** on document classification an
 - **Use Case**: Extract key information from receipts/invoices in billing disputes
 - **Tasks**: Text localization, OCR, key information extraction
 
-#### 9. PubLayNet
+#### 8. PubLayNet
 - **Kaggle Path**: `captaintushar/publaynet-dataset`
 - **Category**: Document OCR
 - **Size**: ~9-12 GB (LARGEST dataset)
@@ -508,7 +500,7 @@ These datasets train the **Evidence Sorter Agent** on document classification an
 - **Classes**: Text, title, list, table, figure
 - **Note**: This is the largest dataset and will take longest to download
 
-#### 10. ICDAR 2019 MLT OCR
+#### 9. ICDAR 2019 MLT OCR
 - **Kaggle Path**: `zubairalibhutto/mlt-19-ocr-dataset`
 - **Category**: Document OCR
 - **Size**: ~500 MB - 1 GB
@@ -516,15 +508,7 @@ These datasets train the **Evidence Sorter Agent** on document classification an
 - **Use Case**: Handle multilingual legal documents (immigration cases)
 - **Languages**: 10+ languages including English, Chinese, Arabic, Hindi
 
-#### 11. Denoising Dirty Documents
-- **Kaggle Path**: `c/denoising-dirty-documents`
-- **Category**: Document OCR
-- **Size**: ~100-200 MB
-- **Description**: Remove noise from printed text (Kaggle competition dataset)
-- **Use Case**: Clean up poor-quality scanned legal documents
-- **Task**: Image denoising, background removal
-
-#### 12. Noisy and Rotated Scanned Documents
+#### 10. Noisy and Rotated Scanned Documents
 - **Kaggle Path**: `sthabile/noisy-and-rotated-scanned-documents`
 - **Category**: Document OCR
 - **Size**: ~50-100 MB
@@ -536,7 +520,7 @@ These datasets train the **Evidence Sorter Agent** on document classification an
 
 ### Audio Dataset (1 dataset)
 
-#### 13. Common Voice
+#### 11. Common Voice
 - **Kaggle Path**: `mozillaorg/common-voice`
 - **Category**: Audio
 - **Size**: ~3-5 GB
@@ -552,10 +536,10 @@ These datasets train the **Evidence Sorter Agent** on document classification an
 
 | Category | Datasets | Est. Total Size | Primary Agent |
 |----------|----------|-----------------|---------------|
-| Healthcare/Veterans | 5 | 70-125 MB | Legal Researcher |
-| Document OCR | 7 | 10-14 GB | Evidence Sorter |
+| Healthcare/Veterans | 4 | 20-30 MB | Legal Researcher |
+| Document OCR | 6 | 10-14 GB | Evidence Sorter |
 | Audio | 1 | 3-5 GB | Client Comm |
-| **TOTAL** | **13** | **~15-20 GB** | All Agents |
+| **TOTAL** | **11** | **~15-20 GB** | All Agents |
 
 **Download Time Estimates:**
 - Sequential (1 worker): 30-60 minutes
