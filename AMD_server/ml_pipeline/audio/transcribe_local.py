@@ -49,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from audio.audio_loader import AudioLoader
 from audio.whisper_local import WhisperLocalTranscriber
+from audio.whisper_parallel import ParallelWhisperTranscriber
 
 
 class LocalTranscriptionPipeline:
@@ -61,6 +62,8 @@ class LocalTranscriptionPipeline:
     def __init__(
         self,
         model_size: str = "large-v3",
+        use_parallel: bool = True,
+        num_workers: int = 8,
         db_host: str = None,
         db_port: int = 5432,
         db_name: str = None,
@@ -72,6 +75,8 @@ class LocalTranscriptionPipeline:
         
         Args:
             model_size: Whisper model size (tiny/base/small/medium/large/large-v3)
+            use_parallel: Use parallel transcription for 3-5x speedup (recommended)
+            num_workers: Number of parallel workers (8 recommended for MI300X)
             db_*: Database connection parameters (reads from env if not provided)
         """
         # Get credentials from environment if not provided
@@ -95,9 +100,22 @@ class LocalTranscriptionPipeline:
         print("=" * 70)
         
         self.loader = AudioLoader(db_host, db_port, db_name, db_user, db_password)
-        self.transcriber = WhisperLocalTranscriber(model_size=model_size)
         
-        print("\n✓ Pipeline initialized")
+        # Use parallel or sequential transcriber
+        self.use_parallel = use_parallel
+        if use_parallel:
+            self.transcriber = ParallelWhisperTranscriber(
+                model_size=model_size,
+                num_workers=num_workers,
+                gpu_batch_size=16
+            )
+            print(f"\n✓ Pipeline initialized (PARALLEL MODE)")
+            print(f"  Workers: {num_workers}")
+            print(f"  Expected speedup: ~{min(num_workers, 4)}x faster")
+        else:
+            self.transcriber = WhisperLocalTranscriber(model_size=model_size)
+            print(f"\n✓ Pipeline initialized (SEQUENTIAL MODE)")
+        
         print(f"  Mode: LOCAL (GPU-accelerated)")
         print(f"  Model: Whisper {model_size}")
         print(f"  Database: {db_host}/{db_name}")
@@ -192,64 +210,111 @@ class LocalTranscriptionPipeline:
         print("Transcribing audio files...")
         print("-" * 70)
         
-        successful = 0
-        failed = 0
         start_time = time.time()
-        results = []
         
-        for i, audio_file in enumerate(audio_files, 1):
-            print(f"\n[{i}/{total_files}] {audio_file['filename']}")
-            print(f"  ID: {audio_file['id']}")
-            print(f"  Path: {audio_file['file_path']}")
+        if dry_run:
+            print("⏭️  Dry run mode - skipping transcription")
+            results = []
+            successful = 0
+            failed = 0
+        
+        elif self.use_parallel and total_files > 1:
+            # PARALLEL TRANSCRIPTION (FAST!)
+            print(f"🚀 Using parallel transcription ({self.transcriber.num_workers} workers)")
+            print(f"   Expected speedup: ~{min(self.transcriber.num_workers, 4)}x faster\n")
             
-            if dry_run:
-                print("  ⏭️  Skipped (dry run)")
-                continue
+            # Extract file paths
+            file_paths = [f['file_path'] for f in audio_files]
             
-            try:
-                # Transcribe
-                file_start = time.time()
+            # Transcribe all in parallel
+            results = self.transcriber.transcribe_parallel(
+                file_paths,
+                language=language,
+                verbose=True
+            )
+            
+            # Add record IDs to results
+            for i, result in enumerate(results):
+                result['record_id'] = audio_files[i]['id']
+            
+            # Save all to database
+            if save_progress or not save_progress:  # Save regardless in parallel mode
+                print("\n" + "-" * 70)
+                print("Saving transcripts to database...")
+                print("-" * 70)
                 
-                result = self.transcriber.transcribe(
-                    audio_path=audio_file['file_path'],
-                    language=language
-                )
+                for result in results:
+                    if result.get('text'):
+                        try:
+                            self._save_transcript(
+                                record_id=result['record_id'],
+                                transcript=result['text'],
+                                metadata=result
+                            )
+                            print(f"  ✓ Saved: {result['filename']}")
+                        except Exception as e:
+                            print(f"  ✗ Error saving {result['filename']}: {e}")
+            
+            successful = sum(1 for r in results if r.get('success', False))
+            failed = sum(1 for r in results if not r.get('success', False))
+        
+        else:
+            # SEQUENTIAL TRANSCRIPTION (for single file or if parallel disabled)
+            print("📝 Using sequential transcription\n")
+            
+            successful = 0
+            failed = 0
+            results = []
+            
+            for i, audio_file in enumerate(audio_files, 1):
+                print(f"\n[{i}/{total_files}] {audio_file['filename']}")
+                print(f"  ID: {audio_file['id']}")
+                print(f"  Path: {audio_file['file_path']}")
                 
-                file_duration = time.time() - file_start
-                
-                # Add metadata
-                result['record_id'] = audio_file['id']
-                result['filename'] = audio_file['filename']
-                result['processing_time'] = file_duration
-                
-                results.append(result)
-                
-                print(f"  ✓ Transcribed in {file_duration:.2f}s")
-                print(f"  Length: {len(result['text'])} characters")
-                
-                # Save to database
-                if save_progress:
-                    self._save_transcript(
-                        record_id=audio_file['id'],
-                        transcript=result['text'],
-                        metadata=result
+                try:
+                    # Transcribe
+                    file_start = time.time()
+                    
+                    result = self.transcriber.transcribe(
+                        audio_path=audio_file['file_path'],
+                        language=language
                     )
-                    print(f"  ✓ Saved to database")
-                
-                successful += 1
-                
-            except Exception as e:
-                failed += 1
-                print(f"  ✗ Error: {e}")
-                results.append({
-                    'record_id': audio_file['id'],
-                    'filename': audio_file['filename'],
-                    'error': str(e),
-                    'success': False
-                })
+                    
+                    file_duration = time.time() - file_start
+                    
+                    # Add metadata
+                    result['record_id'] = audio_file['id']
+                    result['filename'] = audio_file['filename']
+                    result['processing_time'] = file_duration
+                    
+                    results.append(result)
+                    
+                    print(f"  ✓ Transcribed in {file_duration:.2f}s")
+                    print(f"  Length: {len(result['text'])} characters")
+                    
+                    # Save to database
+                    if save_progress:
+                        self._save_transcript(
+                            record_id=audio_file['id'],
+                            transcript=result['text'],
+                            metadata=result
+                        )
+                        print(f"  ✓ Saved to database")
+                    
+                    successful += 1
+                    
+                except Exception as e:
+                    failed += 1
+                    print(f"  ✗ Error: {e}")
+                    results.append({
+                        'record_id': audio_file['id'],
+                        'filename': audio_file['filename'],
+                        'error': str(e),
+                        'success': False
+                    })
         
-        # Save all at once if not saving progressively
-        if not save_progress and not dry_run and results:
+        # Save all at once if not saving progressively (sequential mode only)
+        if not self.use_parallel and not save_progress and not dry_run and results:
             print("\n" + "-" * 70)
             print("Saving all transcripts to database...")
             print("-" * 70)
@@ -377,6 +442,26 @@ def main():
     )
     
     parser.add_argument(
+        '--parallel',
+        action='store_true',
+        default=True,
+        help='Use parallel transcription for 3-5x speedup (default: enabled)'
+    )
+    
+    parser.add_argument(
+        '--sequential',
+        action='store_true',
+        help='Disable parallel processing (use sequential instead)'
+    )
+    
+    parser.add_argument(
+        '--workers',
+        type=int,
+        default=8,
+        help='Number of parallel workers (default: 8 for MI300X)'
+    )
+    
+    parser.add_argument(
         '--dry-run',
         action='store_true',
         help='Preview operations without transcribing'
@@ -409,9 +494,16 @@ def main():
     
     args = parser.parse_args()
     
+    # Determine parallel mode
+    use_parallel = not args.sequential  # Default True unless --sequential specified
+    
     # Initialize pipeline
     try:
-        pipeline = LocalTranscriptionPipeline(model_size=args.model_size)
+        pipeline = LocalTranscriptionPipeline(
+            model_size=args.model_size,
+            use_parallel=use_parallel,
+            num_workers=args.workers
+        )
     except Exception as e:
         print(f"\n❌ Error initializing pipeline: {e}")
         print("\nMake sure you have:")
