@@ -1,17 +1,8 @@
-# Core backend dependencies
-httx
-flask
-flask_cors
-uvicorn
-fastapi
-twilio
-websockets
-starlette
-
 # AMD vLLM Integration
 python-dotenv>=1.0.0
 requests>=2.31.0
 huggingface-hub>=0.19.0
+flasks
 
 # Web Scraping Dependencies
 beautifulsoup4>=4.12.0
