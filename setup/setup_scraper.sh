@@ -116,7 +116,16 @@ echo ""
 echo -e "${YELLOW}[5/6] Installing Python dependencies...${NC}"
 
 cd ~/Paralegal
-pip install selenium beautifulsoup4 lxml psycopg2-binary
+
+# Check if pip3 exists, otherwise use pip
+if command -v pip3 &> /dev/null; then
+    PIP_CMD=pip3
+else
+    PIP_CMD=pip
+fi
+
+echo "Using: $PIP_CMD"
+$PIP_CMD install -r AMD_server/requirements.txt
 
 echo -e "${GREEN}✓ Python packages installed${NC}"
 echo ""
