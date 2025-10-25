@@ -10,15 +10,23 @@ I've created a **completely flexible, plug-and-play infrastructure** that works 
 ### ✅ Ready-to-Use Components
 
 ```
+```
 Paralegal/
 ├── .env.example          # Template - teammates just copy and edit
 ├── config/
 │   └── amd_config.py     # Reads everything from .env automatically
-├── setup/
-│   ├── download_model_enhanced.sh   # Downloads ANY HF model
-│   ├── start_vllm.sh                # Starts server with chosen model
-│   ├── test_model.sh                # Validates model works
-│   └── [original scripts...]
+├── AMD_server/           # All AMD server code organized here
+│   ├── setup/
+│   │   ├── download_model_enhanced.sh   # Downloads ANY HF model
+│   │   ├── start_vllm.sh                # Starts server with chosen model
+│   │   ├── test_model.sh                # Validates model works
+│   │   └── [setup scripts...]
+│   ├── scraper/
+│   │   ├── load_kaggle_datasets.py      # Kaggle dataset downloader
+│   │   ├── load_morgan_files.py         # Morgan & Morgan loader
+│   │   ├── database.py                  # Database utilities
+│   │   └── [scraper tools...]
+│   └── Morgan&Morgan/    # Real case files
 ├── backend/
 │   ├── APIs/AMD/
 │   │   └── llm_client.py            # Generic client for any model
@@ -28,6 +36,7 @@ Paralegal/
 │   │   ├── legal_researcher_agent.py
 │   │   └── evidence_sorter_agent.py
 │   └── test_agents.py               # Tests all agents with chosen model
+```
 └── docs/
     └── MODEL_SETUP_GUIDE.md         # Step-by-step for teammates
 ```
@@ -248,8 +257,9 @@ TRUST_REMOTE_CODE=true
 
 Send them to:
 - **`docs/MODEL_SETUP_GUIDE.md`** - Complete guide with examples
+- **`docs/README.md`** - Documentation index
 - **`.env.example`** - Annotated configuration template
-- **`setup/download_model_enhanced.sh`** - Self-documenting download script
+- **`AMD_server/setup/download_model_enhanced.sh`** - Self-documenting download script
 
 ---
 

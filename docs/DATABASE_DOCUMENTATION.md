@@ -668,7 +668,7 @@ WHERE document_type = 'Audio Recording' AND session_id = 5;
 - Parallel (16 workers): 3-7 minutes
 - Parallel (32 workers): 2-5 minutes
 
-**Storage Location**: `~/Paralegal/scraper/kaggle_datasets/`  
+**Storage Location**: `~/Paralegal/AMD_server/scraper/kaggle_datasets/`  
 **Morgan & Morgan Files**: `~/Morgan&Morgan/` (uploaded to AMD server)
 
 ---
@@ -1031,9 +1031,10 @@ datasets Schema:
 ### Contact & Support
 
 - **Database Admin**: AMD Server (amd-knights@134.199.202.8)
-- **Config File**: `~/Paralegal/scraper/config.ini`
-- **Setup Script**: `~/Paralegal/setup/setup_scraper.sh`
-- **Dataset Loader**: `~/Paralegal/scraper/load_kaggle_datasets.py`
+- **Config File**: `~/Paralegal/AMD_server/scraper/config.ini`
+- **Setup Script**: `~/Paralegal/AMD_server/setup/setup_scraper.sh`
+- **Dataset Loader**: `~/Paralegal/AMD_server/scraper/load_kaggle_datasets.py`
+- **Morgan & Morgan Loader**: `~/Paralegal/AMD_server/scraper/load_morgan_files.py`
 
 ### Version History
 

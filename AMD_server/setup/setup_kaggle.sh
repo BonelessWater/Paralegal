@@ -40,7 +40,7 @@ fi
 # Test database connection
 echo ""
 echo "[3/3] Testing database connection..."
-cd ~/Paralegal/scraper
+cd ~/Paralegal/AMD_server/scraper
 python test_database.py
 
 echo ""
@@ -49,7 +49,7 @@ echo "✓ Setup Complete!"
 echo "============================================"
 echo ""
 echo "To download all 13 Kaggle datasets, run:"
-echo "  cd ~/Paralegal/scraper"
+echo "  cd ~/Paralegal/AMD_server/scraper"
 echo "  python load_kaggle_datasets.py"
 echo ""
 echo "For faster downloads on supercomputer (16 parallel workers):"

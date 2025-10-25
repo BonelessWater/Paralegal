@@ -220,8 +220,8 @@ if [ $? -eq 0 ]; then
     echo ""
     read -p "Auto-update start_vllm.sh with this model? (Y/n): " UPDATE_SCRIPT
     if [ "$UPDATE_SCRIPT" != "n" ] && [ "$UPDATE_SCRIPT" != "N" ]; then
-        if [ -f "../setup/start_vllm.sh" ]; then
-            sed -i.bak "s|--model /models/.*|--model /models/$FOLDER_NAME \\\\|" ../setup/start_vllm.sh
+        if [ -f "./start_vllm.sh" ]; then
+            sed -i.bak "s|--model /models/.*|--model /models/$FOLDER_NAME \\\\|" ./start_vllm.sh
             echo "✅ start_vllm.sh updated!"
         fi
     fi

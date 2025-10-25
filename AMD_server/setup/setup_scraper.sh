@@ -76,7 +76,7 @@ echo ""
 echo -e "${YELLOW}[3/6] Initializing database schema...${NC}"
 
 # Run the schema SQL file
-sudo -u postgres psql -d paralegal_db -f ~/Paralegal/scraper/database_schema.sql
+sudo -u postgres psql -d paralegal_db -f ~/Paralegal/AMD_server/scraper/database_schema.sql
 
 echo -e "${GREEN}✓ Database schema initialized${NC}"
 echo ""
@@ -135,13 +135,13 @@ echo ""
 # =============================================================================
 echo -e "${YELLOW}[6/6] Creating configuration file...${NC}"
 
-cd ~/Paralegal/scraper
+cd ~/Paralegal/AMD_server/scraper
 
 # Copy config example file
 if [ ! -f config.ini ]; then
     cp config.ini.example config.ini
-    echo -e "${GREEN}✓ Configuration file created: scraper/config.ini${NC}"
-    echo -e "${YELLOW}⚠ IMPORTANT: Edit scraper/config.ini and add your credentials!${NC}"
+    echo -e "${GREEN}✓ Configuration file created: AMD_server/scraper/config.ini${NC}"
+    echo -e "${YELLOW}⚠ IMPORTANT: Edit AMD_server/scraper/config.ini and add your credentials!${NC}"
 else
     echo -e "${GREEN}✓ Configuration file already exists${NC}"
 fi
@@ -163,9 +163,9 @@ echo "  User:     paralegal_user"
 echo "  Password: hackathon2024"
 echo ""
 echo "Next Steps:"
-echo "  1. IMPORTANT: Edit scraper/config.ini and add your LexisNexis credentials"
+echo "  1. IMPORTANT: Edit AMD_server/scraper/config.ini and add your LexisNexis credentials"
 echo "  2. Test the scraper:"
-echo "     cd ~/Paralegal/scraper"
+echo "     cd ~/Paralegal/AMD_server/scraper"
 echo "     python test_scraper.py"
 echo ""
 echo "  3. Run the scraper:"

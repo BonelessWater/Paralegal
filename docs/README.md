@@ -121,7 +121,7 @@
 
 - **GitHub Repository**: https://github.com/BonelessWater/Paralegal
 - **AMD Server**: ssh amd-knights@134.199.202.8
-- **Setup Scripts**: `~/Paralegal/setup/`
+- **Setup Scripts**: `~/Paralegal/AMD_server/setup/`
 - **Configuration**: `~/Paralegal/.env`
 
 ---
