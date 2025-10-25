@@ -93,7 +93,8 @@ if command -v docker &> /dev/null; then
             success "Docker daemon started successfully"
         else
             error "Could not start Docker daemon"
-            echo "Try: sudo systemctl start docker"
+            echo "Please run manually: sudo systemctl start docker"
+            echo "Or try: sudo service docker start"
             exit 1
         fi
     fi
