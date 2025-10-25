@@ -9,7 +9,7 @@
 
 ### Core Documentation
 
-#### 1. [DATABASE_DOCUMENTATION.md](DATABASE_DOCUMENTATION.md)
+#### 1. [DATABASE_DOCUMENTATION.md](docs/DATABASE_DOCUMENTATION.md)
 **Complete PostgreSQL database reference**
 - Database schema (all tables and fields)
 - Morgan & Morgan case files (54 documents, 4 cases)
@@ -21,7 +21,7 @@
 
 ---
 
-#### 2. [MODEL_SETUP_GUIDE.md](MODEL_SETUP_GUIDE.md)
+#### 2. [MODEL_SETUP_GUIDE.md](docs/MODEL_SETUP_GUIDE.md)
 **Model selection and configuration**
 - Recommended legal LLM models
 - Download and deployment instructions
@@ -32,7 +32,7 @@
 
 ---
 
-#### 3. [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md)
+#### 3. [ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md)
 **System design and architecture**
 - High-level system design
 - Component relationships
@@ -43,7 +43,7 @@
 
 ---
 
-#### 4. [AGENT_TRAINING_OPTIMIZATION.md](AGENT_TRAINING_OPTIMIZATION.md)
+#### 4. [AGENT_TRAINING_OPTIMIZATION.md](docs/AGENT_TRAINING_OPTIMIZATION.md)
 **Training strategies and performance tuning**
 - Agent pipeline optimization
 - Training best practices
@@ -57,19 +57,19 @@
 ## 🚀 Quick Links by Task
 
 ### Setup & Installation
-- **Database Setup**: [DATABASE_DOCUMENTATION.md](DATABASE_DOCUMENTATION.md) - Connection info, schema creation
-- **Model Setup**: [MODEL_SETUP_GUIDE.md](MODEL_SETUP_GUIDE.md) - Download and deploy models
-- **System Architecture**: [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md) - Overall system design
+- **Database Setup**: [DATABASE_DOCUMENTATION.md](docs/DATABASE_DOCUMENTATION.md) - Connection info, schema creation
+- **Model Setup**: [MODEL_SETUP_GUIDE.md](docs/MODEL_SETUP_GUIDE.md) - Download and deploy models
+- **System Architecture**: [ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md) - Overall system design
 
 ### Data & Training
-- **Morgan & Morgan Cases**: [DATABASE_DOCUMENTATION.md#morgan--morgan-case-files](DATABASE_DOCUMENTATION.md#morgan--morgan-case-files)
-- **Kaggle Datasets**: [DATABASE_DOCUMENTATION.md#dataset-catalog](DATABASE_DOCUMENTATION.md#dataset-catalog)
-- **Agent Training**: [AGENT_TRAINING_OPTIMIZATION.md](AGENT_TRAINING_OPTIMIZATION.md)
+- **Morgan & Morgan Cases**: [DATABASE_DOCUMENTATION.md#morgan--morgan-case-files](docs/DATABASE_DOCUMENTATION.md#morgan--morgan-case-files)
+- **Kaggle Datasets**: [DATABASE_DOCUMENTATION.md#dataset-catalog](docs/DATABASE_DOCUMENTATION.md#dataset-catalog)
+- **Agent Training**: [AGENT_TRAINING_OPTIMIZATION.md](docs/AGENT_TRAINING_OPTIMIZATION.md)
 
 ### Operations
-- **Database Queries**: [DATABASE_DOCUMENTATION.md#common-queries](DATABASE_DOCUMENTATION.md#common-queries)
-- **Troubleshooting**: [DATABASE_DOCUMENTATION.md#maintenance--troubleshooting](DATABASE_DOCUMENTATION.md#maintenance--troubleshooting)
-- **Performance Tuning**: [AGENT_TRAINING_OPTIMIZATION.md](AGENT_TRAINING_OPTIMIZATION.md)
+- **Database Queries**: [DATABASE_DOCUMENTATION.md#common-queries](docs/DATABASE_DOCUMENTATION.md#common-queries)
+- **Troubleshooting**: [DATABASE_DOCUMENTATION.md#maintenance--troubleshooting](docs/DATABASE_DOCUMENTATION.md#maintenance--troubleshooting)
+- **Performance Tuning**: [AGENT_TRAINING_OPTIMIZATION.md](docs/AGENT_TRAINING_OPTIMIZATION.md)
 
 ---
 
