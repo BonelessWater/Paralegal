@@ -4,6 +4,8 @@ venv
 # Local credentials (NEVER commit these!)
 SERVER_CREDENTIALS_LOCAL.txt
 *_CREDENTIALS_LOCAL.*
+config.ini
+scraper/config.ini
 
 # Python
 __pycache__/
