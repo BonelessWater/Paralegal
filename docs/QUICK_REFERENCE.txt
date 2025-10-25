@@ -1,0 +1,215 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                   AMD ROCm + vLLM Quick Reference Card                       ║
+║                      AI Legal Tender Hackathon                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 🚀 QUICK START                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  chmod +x *.sh
+  ./amd_setup_guide.sh      # Run this first
+  ./download_model.sh       # Download Llama 3 (choose option 1)
+  ./start_vllm.sh          # Start inference server
+  ./test_vllm.sh           # Verify everything works
+  ./setup_ocr.sh           # Setup OCR (choose option 1)
+
+  Total time: ~45-60 minutes
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 🔍 GPU MONITORING                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  rocm-smi                           # Quick GPU status
+  rocm-smi -d 0 --showmeminfo       # Memory usage
+  watch -n 1 rocm-smi               # Live monitoring
+  rocminfo | grep -E "Name|Memory"  # Detailed GPU specs
+
+  💡 Screenshot rocm-smi for your demo!
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 🐳 DOCKER COMMANDS                                                           │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  docker ps                          # List running containers
+  docker logs vllm-rocm             # View logs
+  docker logs -f vllm-rocm          # Follow logs (live)
+  docker stats vllm-rocm            # Resource usage
+  docker restart vllm-rocm          # Restart container
+  docker stop vllm-rocm             # Stop container
+  docker start vllm-rocm            # Start existing container
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 🧪 API TESTING                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  # Health check
+  curl http://localhost:8000/health
+
+  # List models
+  curl http://localhost:8000/v1/models
+
+  # Quick test completion
+  curl http://localhost:8000/v1/completions \
+    -H "Content-Type: application/json" \
+    -d '{"model": "llama-3-8b", "prompt": "Hello", "max_tokens": 50}'
+
+  # Full test suite
+  ./test_vllm.sh
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 📊 PERFORMANCE METRICS (Document These!)                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  # Inference speed (tokens/second)
+  docker logs vllm-rocm | grep 'tokens/s'
+
+  # GPU utilization %
+  rocm-smi | grep "GPU use"
+
+  # Memory usage
+  docker stats vllm-rocm --no-stream
+
+  # Response latency (time a request)
+  time curl http://localhost:8000/v1/completions \
+    -H "Content-Type: application/json" \
+    -d '{"model": "llama-3-8b", "prompt": "test", "max_tokens": 100}'
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 🔧 TROUBLESHOOTING                                                           │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  Problem: vLLM container won't start
+  ├─ Check GPU: ls -la /dev/kfd /dev/dri
+  ├─ Check logs: docker logs vllm-rocm
+  └─ Verify ROCm: /opt/rocm/bin/rocminfo
+
+  Problem: Model download fails (Llama 3)
+  ├─ Accept license: https://huggingface.co/meta-llama
+  ├─ Check token: echo $HUGGING_FACE_HUB_TOKEN
+  └─ Try manual: huggingface-cli login
+
+  Problem: API returns 500 errors
+  ├─ Check model loaded: docker logs vllm-rocm | grep "Loading"
+  ├─ Wait 60 seconds after start
+  └─ Restart: docker restart vllm-rocm
+
+  Problem: Out of memory
+  ├─ Use smaller model (Llama 3 8B instead of 70B)
+  ├─ Reduce batch size in start_vllm.sh
+  └─ Check: docker stats vllm-rocm
+
+  Problem: Slow inference
+  ├─ Check GPU usage: rocm-smi
+  ├─ Verify ROCm optimization: docker logs vllm-rocm | grep "ROCm"
+  └─ Reduce max_model_len in start_vllm.sh
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 🐍 PYTHON INTEGRATION                                                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  # Run example integration
+  python3 example_integration.py
+
+  # Test OCR
+  cd ~/ai-legal-tender/scripts
+  python3 test_ocr_paddle.py
+
+  # Use in your code
+  import requests
+  response = requests.post("http://localhost:8000/v1/chat/completions",
+    json={"model": "llama-3-8b", "messages": [...]})
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 📁 FILE LOCATIONS                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  Setup Scripts:       ~/amd_setup_guide.sh, download_model.sh, etc.
+  Project Root:        ~/ai-legal-tender/
+  Models:              ~/ai-legal-tender/models/llama-3-8b/
+  Python Scripts:      ~/ai-legal-tender/scripts/
+  OCR Interface:       ~/ai-legal-tender/scripts/ocr_interface.py
+  Example Code:        ~/example_integration.py
+  Documentation:       ~/README_SETUP.md
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 🏆 DEMO PREP CHECKLIST                                                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  Before your presentation:
+  
+  ☐ Screenshot rocm-smi output (GPU specs)
+  ☐ Document inference speed (tokens/s)
+  ☐ Record GPU utilization percentage
+  ☐ Test all API endpoints work
+  ☐ Have backup video recording of demo
+  ☐ Prepare architecture diagram
+  ☐ Write down talking points:
+      • "Running on AMD MI300X with 128GB HBM"
+      • "vLLM production deployment, not just PyTorch"
+      • "Full ROCm stack: HIP, MIGraphX, ROCm"
+      • "Self-hosted for data privacy"
+      • "Achieving X tokens/second"
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 🎯 CRITICAL SUCCESS FACTORS                                                 │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  Must Work:
+  ✅ LLM accessible via API (test with curl)
+  ✅ One complete agent workflow
+  ✅ Can articulate architecture in 3 minutes
+
+  Impressive Add-ons:
+  🏆 vLLM (not just basic inference)
+  🏆 Multiple agents in parallel
+  🏆 OCR integration working
+  🏆 Performance metrics documented
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ⚡ EMERGENCY FALLBACKS                                                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  If AMD Cloud is down:
+  → Use local GPU with Ollama
+  → Still present "designed for MI300X"
+  → Focus on architecture
+
+  If vLLM fails:
+  → Use transformers library directly
+  → Keep AMD hardware story
+  → Mention "production would use vLLM"
+
+  If demo fails:
+  → Show pre-recorded video
+  → Walk through code
+  → Explain architecture with diagram
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 📞 USEFUL LINKS                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  AMD ROCm Docs:         https://rocm.docs.amd.com/
+  vLLM Documentation:    https://docs.vllm.ai/
+  Hugging Face Models:   https://huggingface.co/meta-llama
+  Hugging Face Tokens:   https://huggingface.co/settings/tokens
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ⏱️  TIME ESTIMATES                                                           │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  Task                          Time        Status
+  ────────────────────────────────────────────────
+  Initial setup                 15 min      [ ]
+  Model download               10-30 min    [ ]
+  vLLM container start          5 min       [ ]
+  Testing                       5 min       [ ]
+  OCR setup                     10 min      [ ]
+  ────────────────────────────────────────────────
+  Total                        45-65 min
+
+  💡 Start model download FIRST (longest wait)
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  Keep this terminal open during hackathon for quick command reference!      ║
+╚══════════════════════════════════════════════════════════════════════════════╝

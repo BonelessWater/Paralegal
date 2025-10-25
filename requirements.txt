@@ -1,3 +1,4 @@
+# Core backend dependencies
 httx
 flask
 flask_cors
@@ -6,3 +7,10 @@ fastapi
 twilio
 websockets
 starlette
+
+# AMD vLLM Integration
+python-dotenv>=1.0.0
+requests>=2.31.0
+huggingface-hub>=0.19.0
+
+# Note: OCR dependencies installed separately via setup/setup_ocr.sh
