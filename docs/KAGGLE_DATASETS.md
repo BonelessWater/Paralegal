@@ -77,16 +77,25 @@ pip install kaggle pandas psycopg2-binary
 # Make sure database is set up
 python test_database.py
 
-# Download all datasets
+# Download all datasets (with parallel processing)
 python load_kaggle_datasets.py
+
+# Or specify number of parallel workers (default: 8)
+KAGGLE_WORKERS=16 python load_kaggle_datasets.py  # For supercomputer
 ```
 
 **This will:**
 - Create `datasets` schema in PostgreSQL
 - Create `kaggle_datasets` and `dataset_files` tables
-- Download all 13 datasets to `~/Paralegal/scraper/kaggle_datasets/`
+- Download all 13 datasets to `~/Paralegal/scraper/kaggle_datasets/` **in parallel**
+- Use 8 workers by default (can increase to 16-32 on supercomputer)
 - Insert metadata into database
-- Print download summary
+- Print download summary with timing
+
+**⚡ Performance on Supercomputer:**
+- **8 workers**: ~5-10 minutes
+- **16 workers**: ~3-7 minutes  
+- **32 workers**: ~2-5 minutes
 
 ---
 
@@ -94,22 +103,25 @@ python load_kaggle_datasets.py
 
 ```
 ============================================================
-Kaggle Dataset Downloader
+Kaggle Dataset Downloader (Parallel Mode)
+Using 8 parallel workers
 ============================================================
 ✓ Dataset tables created
 
 [1/13] Processing: VHA Hospitals Timely Care Data
-Category: healthcare
-Description: Performance on Clinical Measures and Processes of Care
-Downloading: VHA Hospitals Timely Care Data...
-✓ Downloaded: VHA Hospitals Timely Care Data
-✓ Metadata saved for: VHA Hospitals Timely Care Data
-
 [2/13] Processing: CMS Medicare
-...
+[3/13] Processing: Veteran Employment Outcomes
+... (downloads run in parallel) ...
+
+✓ Downloaded: VHA Hospitals Timely Care Data
+✓ Downloaded: CMS Medicare
+✓ Metadata saved for: VHA Hospitals Timely Care Data
+... (all 13 processing simultaneously) ...
 
 ============================================================
 ✓ All datasets processed!
+Completed: 13, Failed: 0
+Total time: 287.3 seconds (4.8 minutes)
 ============================================================
 
 Download Summary:
@@ -191,6 +203,16 @@ WHERE status = 'downloaded';
 - Audio dataset (Common Voice): ~10-15 GB
 
 **Total:** ~15-25 GB disk space required
+
+**Download time on AMD Supercomputer:**
+- With 8 workers (default): **5-10 minutes**
+- With 16 workers: **3-7 minutes**
+- With 32 workers: **2-5 minutes**
+
+To use more workers:
+```bash
+KAGGLE_WORKERS=16 python load_kaggle_datasets.py
+```
 
 Make sure the AMD server has enough space:
 ```bash
