@@ -268,6 +268,10 @@ class KaggleDatasetLoader:
                                 INSERT INTO datasets.dataset_files
                                 (dataset_id, file_name, file_path, file_type, size_mb)
                                 VALUES (%s, %s, %s, %s, %s)
+                                ON CONFLICT (dataset_id, file_name) 
+                                DO UPDATE SET 
+                                    file_path = EXCLUDED.file_path,
+                                    size_mb = EXCLUDED.size_mb
                             """, (
                                 dataset_id,
                                 file_path.name,
@@ -309,6 +313,7 @@ class KaggleDatasetLoader:
         start_time = time.time()
         completed = 0
         failed = 0
+        failed_datasets = []  # Track failed datasets
         
         # Use ThreadPoolExecutor for parallel downloads
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -327,9 +332,11 @@ class KaggleDatasetLoader:
                         completed += 1
                     else:
                         failed += 1
+                        failed_datasets.append(name)
                 except Exception as e:
                     logger.error(f"✗ Error processing {dataset['name']}: {e}")
                     failed += 1
+                    failed_datasets.append(dataset['name'])
         
         elapsed_time = time.time() - start_time
         
@@ -340,9 +347,9 @@ class KaggleDatasetLoader:
         logger.info("=" * 60)
         
         # Summary
-        self.print_summary()
+        self.print_summary(failed_datasets)
     
-    def print_summary(self):
+    def print_summary(self, failed_datasets=None):
         """Print download summary"""
         conn = self.get_db_connection()
         cursor = conn.cursor()
@@ -363,6 +370,12 @@ class KaggleDatasetLoader:
         print("-" * 60)
         for status, count, files, size in results:
             print(f"  {status.upper()}: {count} datasets, {files or 0} files, {size or 0:.2f} MB")
+        
+        if failed_datasets:
+            print("\nFailed Datasets:")
+            for name in failed_datasets:
+                print(f"  - {name}")
+            print("\nNote: Some datasets (especially competitions) require you to accept the rules on the Kaggle website before downloading.")
         
         cursor.close()
         conn.close()
