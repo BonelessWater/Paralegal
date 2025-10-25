@@ -1,40 +1,48 @@
 #!/usr/bin/env python3
 """
-Transcribe Morgan & Morgan Call Recordings using OpenAI Whisper API
+Audio Transcription Pipeline - Local Whisper or OpenAI API
 
-This script:
-1. Loads audio files from PostgreSQL database
-2. Transcribes them using OpenAI's Whisper API
-3. Saves transcripts back to database
+Transcribe audio recordings from PostgreSQL database using either:
+1. Local Whisper (FREE, GPU-accelerated) - RECOMMENDED
+2. OpenAI Whisper API (costs $0.006/min)
+
+Features:
+- Load audio files from database
+- Batch transcription with progress tracking
+- Cost estimation before processing (API mode)
+- Dry-run mode to preview operations
+- Save transcripts back to database
+- Comprehensive error handling
 
 Usage:
-    # Transcribe all untranscribed recordings
-    python transcribe_api.py
+    # LOCAL WHISPER (FREE, GPU-accelerated) - RECOMMENDED
+    python transcribe_api.py --local
     
-    # Transcribe specific recordings by ID
-    python transcribe_api.py --ids 1 2 3
+    # Dry run (preview operations, no transcription)
+    python transcribe_api.py --local --dry-run
     
-    # Dry run (don't save to database)
-    python transcribe_api.py --dry-run
+    # Transcribe specific files
+    python transcribe_api.py --local --limit 5
     
-    # Force re-transcribe already transcribed files
-    python transcribe_api.py --force
+    # OPENAI API (costs money)
+    python transcribe_api.py --api
+    
+    # Choose model size for local Whisper
+    python transcribe_api.py --local --model-size medium  # faster, less accurate
+    python transcribe_api.py --local --model-size large-v3  # slower, best accuracy
 """
 
 import os
 import sys
 import argparse
-import time
 from pathlib import Path
+from typing import List, Dict, Optional
 from datetime import datetime
-import psycopg2
-from typing import List, Dict
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from audio.audio_loader import AudioLoader
-from audio.whisper_api import WhisperAPITranscriber
 
 
 class TranscriptionPipeline:
