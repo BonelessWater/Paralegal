@@ -13,6 +13,10 @@ urllib3>=2.0.0
 # Database Dependencies
 psycopg2-binary>=2.9.9
 
+# Kaggle Dataset Integration
+kaggle>=1.5.16
+pandas>=2.0.0
+
 # Note: OCR dependencies installed separately via setup/setup_ocr.sh
 google-auth
 dspy-ai
