@@ -212,10 +212,15 @@ class MorganFileLoader:
             title = f"Case {case_number} - {title}"
         
         # Generate summary
-        summary = f"{doc_type} from Morgan & Morgan case file"
+        summary = f"{doc_type} from Morgan & Morgan case file {case_number}"
         if full_text:
             # Use first 500 characters as summary
             summary = full_text[:500] + '...' if len(full_text) > 500 else full_text
+        
+        # Create unique document_id from case number and filename hash
+        import hashlib
+        file_hash = hashlib.md5(filename.encode()).hexdigest()[:8]
+        unique_doc_id = f"{case_number}-{file_hash}"
         
         # Insert document - using actual column names from schema
         cursor = conn.cursor()
@@ -227,7 +232,7 @@ class MorganFileLoader:
                 RETURNING id
             """, (
                 session_id,
-                case_number,  # document_id field stores case number
+                unique_doc_id,  # document_id field stores unique document identifier
                 title,
                 doc_type,
                 summary,
@@ -324,9 +329,9 @@ class MorganFileLoader:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE legal_data.search_sessions
-                SET total_results = %s, results_scraped = %s
+                SET total_results = %s
                 WHERE id = %s
-            """, (self.stats['documents_inserted'], self.stats['documents_inserted'], session_id))
+            """, (self.stats['documents_inserted'], session_id))
             conn.commit()
             cursor.close()
             
