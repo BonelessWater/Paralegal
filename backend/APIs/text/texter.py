@@ -1,24 +1,32 @@
-import os
-import requests
+import os, json, requests
 from dotenv import load_dotenv
+from google.oauth2 import service_account
+from google.auth.transport.requests import Request
 
-# Load .env variables
 load_dotenv()
 
-API_KEY = os.getenv("GOOGLE_API_KEY")
-SPACE_ID = os.getenv("SPACE_ID")
+SPACE_ID = os.getenv("SPACE_ID")                  # e.g., spaces/AAAA9vHkK2A
+SA_KEY_PATH = os.getenv("GOOGLE_SA_KEY", "service_account.json")
 
-# Your message payload
-payload = {
-    "text": "Hello from Python using GOOGLE_API_KEY 🚀"
-}
+SCOPES = ["https://www.googleapis.com/auth/chat.bot"]
 
-# Google Chat API endpoint
-url = f"https://chat.googleapis.com/v1/{SPACE_ID}/messages?key={API_KEY}"
+creds = service_account.Credentials.from_service_account_file(
+    SA_KEY_PATH, scopes=SCOPES
+)
+creds.refresh(Request())                          # fetch access token
+token = creds.token
 
-response = requests.post(url, json=payload)
+url = f"https://chat.googleapis.com/v1/{SPACE_ID}/messages"
+payload = {"text": "Hello from my service account 🚀"}
 
-if response.status_code == 200:
-    print("✅ Message sent successfully!")
+resp = requests.post(
+    url,
+    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    json=payload,
+    timeout=15,
+)
+
+if resp.ok:
+    print("✅ Sent:", resp.json().get("name"))
 else:
-    print("❌ Failed:", response.status_code, response.text)
+    print("❌ Failed:", resp.status_code, resp.text)

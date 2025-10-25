@@ -23,3 +23,6 @@ urllib3>=2.0.0
 psycopg2-binary>=2.9.9
 
 # Note: OCR dependencies installed separately via setup/setup_ocr.sh
+google-auth
+dspy-ai
+python-multipart

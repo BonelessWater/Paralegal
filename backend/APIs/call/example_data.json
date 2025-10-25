@@ -1,0 +1,53 @@
+{
+  "client_id": "CL-20481",
+  "full_name": "Alexandra (Alex) Reyes",
+  "dob_last4": "1992",
+  "email": "alex.reyes@example.com",
+  "phone": "+1-352-555-0138",
+  "preferred_contact": "email",
+  "availability_windows_et": [
+    { "days": "Mon–Thu", "from": "13:00", "to": "17:30" },
+    { "days": "Fri", "from": "09:00", "to": "12:00" }
+  ],
+  "matters": [
+    {
+      "matter_id": "MAT-AXR-102",
+      "nickname": "Auto claim / Sunshine Ins.",
+      "practice_area": "Insurance / Personal Injury",
+      "responsible_attorney": "Jordan Kim, Esq.",
+      "status": "Waiting on insurer’s settlement response",
+      "key_dates": {
+        "demand_sent": "2025-10-10",
+        "insurer_response_due": "2025-10-28"
+      },
+      "open_questions": [
+        "What if no response by the 10/28 deadline?",
+        "Timeline for independent medical exam (IME), if any?"
+      ],
+      "documents_on_file": [
+        "Demand_Packet_2025-10-10.pdf",
+        "ER_Visit_Notes_2025-09-17.pdf",
+        "Police_Report_2025-09-15.pdf"
+      ]
+    },
+    {
+      "matter_id": "MAT-AXR-207",
+      "nickname": "Lease dispute w/ Pine Vista Apts",
+      "practice_area": "Landlord/Tenant",
+      "responsible_attorney": "Jordan Kim, Esq.",
+      "status": "Negotiation over early termination fee",
+      "key_dates": {
+        "lease_end_requested": "2025-11-30",
+        "landlord_counter_due": "2025-10-31"
+      },
+      "open_questions": [
+        "Validity of early termination clause Section 14(b)",
+        "Whether key hand-off can be in mid-November"
+      ],
+      "documents_on_file": [
+        "Lease_2024-12-01.pdf",
+        "Email_Thread_Landlord_2025-10-12.eml"
+      ]
+    }
+  ]
+}
