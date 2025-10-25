@@ -134,10 +134,15 @@ class MorganFileLoader:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO legal_data.search_sessions 
-            (search_query, scraper_version, total_results)
-            VALUES (%s, %s, %s)
+            (search_query, search_url, notes, status)
+            VALUES (%s, %s, %s, %s)
             RETURNING id
-        """, ('Morgan & Morgan Case Files Import', 'manual_upload_v1.0', 0))
+        """, (
+            'Morgan & Morgan Case Files Import',
+            'file://~/Morgan&Morgan',
+            'Manual upload of Morgan & Morgan case files (v1.0)',
+            'completed'
+        ))
         
         session_id = cursor.fetchone()[0]
         conn.commit()
