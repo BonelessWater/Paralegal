@@ -6,17 +6,18 @@ Verifies that your Hugging Face model works with the agent system
 import sys
 import os
 
-# Add backend to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import sys
+import os
 
-from APIs.AMD.llm_client import AMDLLMClient
+# Add AMD_server directory and parent for backend access
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+
+from backend.APIs.AMD.llm_client import AMDLLMClient
 from agents.client_communication_agent import ClientCommunicationAgent
 from agents.records_wrangler_agent import RecordsWranglerAgent
 from agents.legal_researcher_agent import LegalResearcherAgent
 from agents.evidence_sorter_agent import EvidenceSorterAgent
-
-# Import config
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from config.amd_config import AMDConfig
 
 

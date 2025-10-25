@@ -222,7 +222,7 @@ TRUST_REMOTE_CODE=true  # If you have custom model code
 **Solutions:**
 1. Try an "Instruct" variant: `meta-llama/Meta-Llama-3-8B-Instruct`
 2. Adjust temperature: `DEFAULT_TEMPERATURE=0.5` (lower = more deterministic)
-3. Change the system prompts in `/backend/agents/` files
+3. Change the system prompts in `/AMD_server/agents/` files
 
 ---
 
@@ -232,7 +232,7 @@ Once your model is running, test it with the specialist agents:
 
 ```bash
 cd ..
-python3 backend/test_agents.py
+python3 AMD_server/test_agents.py
 ```
 
 This will run all 4 specialist agents with your model:
@@ -293,16 +293,20 @@ Paralegal/
 ├── .env.example           # Template
 ├── config/
 │   └── amd_config.py      # Reads from .env
-├── setup/
-│   ├── download_model_enhanced.sh  # ← DOWNLOAD YOUR MODEL
-│   ├── start_vllm.sh               # ← START SERVER
-│   └── test_model.sh               # ← TEST IT WORKS
+├── AMD_server/
+│   ├── setup/
+│   │   ├── download_model_enhanced.sh  # ← DOWNLOAD YOUR MODEL
+│   │   ├── start_vllm.sh               # ← START SERVER
+│   │   └── test_model.sh               # ← TEST IT WORKS
+│   ├── agents/
+│   │   ├── client_communication_agent.py
+│   │   ├── records_wrangler_agent.py
+│   │   ├── legal_researcher_agent.py
+│   │   └── evidence_sorter_agent.py
+│   └── test_agents.py
 └── backend/
-    ├── APIs/AMD/
-    │   └── llm_client.py   # Uses your model automatically
-    └── agents/
-        ├── client_communication_agent.py
-        ├── records_wrangler_agent.py
+    └── APIs/AMD/
+        └── llm_client.py   # Uses your model automatically
         ├── legal_researcher_agent.py
         └── evidence_sorter_agent.py
 ```

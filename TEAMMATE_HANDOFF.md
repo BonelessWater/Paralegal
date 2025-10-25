@@ -37,7 +37,7 @@
    ```
 
 ### Documentation for You
-- **📖 `docs/MODEL_SETUP_GUIDE.md`** - Complete guide with examples
+- **📖 `MODEL_SETUP_GUIDE.md`** - Complete guide with examples
 - **📝 `.env.example`** - All configuration options explained
 
 ---
@@ -88,8 +88,8 @@ All agents return consistent dictionaries:
 ```
 
 ### Documentation for You
-- **📖 `docs/ARCHITECTURE_OVERVIEW.md`** - System design & data flow
-- **🧪 `backend/test_agents.py`** - Working examples of all agents
+- **📖 `ARCHITECTURE_OVERVIEW.md`** - System design & data flow
+- **🧪 `AMD_server/test_agents.py`** - Working examples of all agents
 
 ---
 
@@ -123,12 +123,12 @@ rocm-smi
 ### Essential Files
 
 ```
-.env                          # Your configuration
-setup/download_model_enhanced.sh   # Get model
-setup/start_vllm.sh                # Start server
-setup/test_model.sh                # Test server
-backend/test_agents.py             # Test agents
-docs/MODEL_SETUP_GUIDE.md          # Full guide
+.env                                    # Your configuration
+AMD_server/setup/download_model_enhanced.sh   # Get model
+AMD_server/setup/start_vllm.sh                # Start server
+AMD_server/setup/test_model.sh                # Test server
+AMD_server/test_agents.py                     # Test agents
+MODEL_SETUP_GUIDE.md                          # Full guide
 ```
 
 ---
@@ -165,14 +165,14 @@ You don't need to build:
 ## 🚀 Getting Started Now
 
 ### Model Team - Start Here:
-1. Read: `docs/MODEL_SETUP_GUIDE.md`
+1. Read: `MODEL_SETUP_GUIDE.md`
 2. Configure: `.env` file
-3. Run: `setup/download_model_enhanced.sh`
-4. Test: `setup/test_model.sh`
+3. Run: `AMD_server/setup/download_model_enhanced.sh`
+4. Test: `AMD_server/setup/test_model.sh`
 
 ### ADK Team - Start Here:
-1. Read: `docs/ARCHITECTURE_OVERVIEW.md`
-2. Review: `backend/test_agents.py` (shows how to use agents)
+1. Read: `ARCHITECTURE_OVERVIEW.md`
+2. Review: `AMD_server/test_agents.py` (shows how to use agents)
 3. Import agents into your orchestrator
 4. Build routing logic
 
@@ -193,10 +193,10 @@ You don't need to build:
 ### Agents give bad responses
 - Try: Lower temperature in `.env` (e.g., `0.5`)
 - Try: Different model (some work better than others)
-- Try: Edit system prompts in `backend/agents/*.py`
+- Try: Edit system prompts in `AMD_server/agents/*.py`
 
 ### Need help?
-- Check: `docs/MODEL_SETUP_GUIDE.md` - Troubleshooting section
+- Check: `MODEL_SETUP_GUIDE.md` - Troubleshooting section
 - Check: `QUICK_REFERENCE.txt` - Common fixes
 - Check: Agent code - well-commented and modular
 
@@ -244,15 +244,15 @@ Hour 6-24:  Focus on demo polish, UI, outreach automation
 
 ### For Infrastructure Questions
 - Check: `README.md`
-- Check: `docs/` folder
+- Check: Documentation at root level
 
 ### For Model Questions
-- Check: `docs/MODEL_SETUP_GUIDE.md`
+- Check: `MODEL_SETUP_GUIDE.md`
 - Check: `.env.example` comments
 
 ### For Agent Integration
-- Check: `docs/ARCHITECTURE_OVERVIEW.md`
-- Check: `backend/test_agents.py`
+- Check: `ARCHITECTURE_OVERVIEW.md`
+- Check: `AMD_server/test_agents.py`
 
 ---
 

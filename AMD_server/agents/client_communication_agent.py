@@ -10,8 +10,9 @@ import os
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..'))
 
-from APIs.AMD.llm_client import AMDLLMClient
+from backend.APIs.AMD.llm_client import AMDLLMClient
 
 logger = logging.getLogger(__name__)
 

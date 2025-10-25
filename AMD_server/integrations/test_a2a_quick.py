@@ -9,8 +9,10 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent
+# Add AMD_server and project root to path
+amd_server_dir = Path(__file__).parent.parent
+project_root = amd_server_dir.parent
+sys.path.insert(0, str(amd_server_dir))
 sys.path.insert(0, str(project_root))
 
 print("""
@@ -37,7 +39,7 @@ print("TEST 1: Import all A2A modules")
 print("="*80)
 
 try:
-    from backend.integrations.adk_a2a_agents import (
+    from integrations.adk_a2a_agents import (
         ParalegalA2AAgent,
         ParalegalA2ARegistry
     )
@@ -47,7 +49,7 @@ except Exception as e:
     exit(1)
 
 try:
-    from backend.integrations.a2a_workflow_demos import (
+    from integrations.a2a_workflow_demos import (
         A2AWorkflowOrchestrator
     )
     print("✅ a2a_workflow_demos imported successfully")
@@ -56,7 +58,7 @@ except Exception as e:
     exit(1)
 
 try:
-    from backend.integrations.a2a_monitoring import (
+    from integrations.a2a_monitoring import (
         A2AMessageTracer,
         A2AMetricsCollector,
         A2AHealthMonitor,

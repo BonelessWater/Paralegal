@@ -9,10 +9,16 @@ import logging
 # Note: Install google-adk first: pip install google-adk
 # from google_adk import A2AAgent, A2AMessage  # Uncomment when ADK installed
 
-from backend.agents.client_communication_agent import ClientCommunicationAgent
-from backend.agents.records_wrangler_agent import RecordsWranglerAgent
-from backend.agents.legal_researcher_agent import LegalResearcherAgent
-from backend.agents.evidence_sorter_agent import EvidenceSorterAgent
+import sys
+import os
+# Add parent directory to path to access agents and backend
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..'))
+
+from agents.client_communication_agent import ClientCommunicationAgent
+from agents.records_wrangler_agent import RecordsWranglerAgent
+from agents.legal_researcher_agent import LegalResearcherAgent
+from agents.evidence_sorter_agent import EvidenceSorterAgent
 from backend.APIs.AMD.llm_client import AMDLLMClient
 from config.amd_config import AMDConfig
 

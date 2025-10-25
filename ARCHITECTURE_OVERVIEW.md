@@ -20,7 +20,7 @@
 ║                      MODEL DOWNLOAD & SETUP                           ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                       ║
-║   setup/download_model_enhanced.sh                                   ║
+║   AMD_server/setup/download_model_enhanced.sh                        ║
 ║   ┌─────────────────────────────────────────────────────────────┐   ║
 ║   │ ✓ Reads MODEL_NAME from .env                                │   ║
 ║   │ ✓ Downloads from Hugging Face Hub                           │   ║
@@ -34,7 +34,7 @@
 ║                    AMD MI300X + vLLM SERVER                           ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                       ║
-║   setup/start_vllm.sh                                                ║
+║   AMD_server/setup/start_vllm.sh                                     ║
 ║   ┌─────────────────────────────────────────────────────────────┐   ║
 ║   │ Docker Container: vllm-rocm                                  │   ║
 ║   │ ├─ Loads model from MODEL_FOLDER                            │   ║
@@ -65,7 +65,7 @@
 ║                      SPECIALIST AGENTS LAYER                          ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                       ║
-║   backend/agents/                                                    ║
+║   AMD_server/agents/                                                 ║
 ║   ┌─────────────────────────────────────────────────────────────┐   ║
 ║   │ 1. ClientCommunicationAgent                                  │   ║
 ║   │    ├─ Input: Messy client messages                           │   ║
@@ -161,18 +161,18 @@ ANY HuggingFace Model
 .env
  ├─> config/amd_config.py (reads .env)
  ├─> backend/APIs/AMD/llm_client.py (uses config)
- └─> backend/agents/*.py (uses client)
+ └─> AMD_server/agents/*.py (uses client)
 ```
 
 ### 3. **Testing Layers**
 ```
-setup/test_model.sh
+AMD_server/setup/test_model.sh
  ├─ Server health ✓
  ├─ Model loaded ✓
  ├─ API responses ✓
  └─ Performance metrics ✓
 
-backend/test_agents.py
+AMD_server/test_agents.py
  ├─ Agent 1 ✓
  ├─ Agent 2 ✓
  ├─ Agent 3 ✓

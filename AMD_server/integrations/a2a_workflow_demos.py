@@ -14,8 +14,14 @@ import logging
 from typing import Dict, List, Any
 from datetime import datetime
 import json
+import sys
+import os
 
-from backend.integrations.adk_a2a_agents import ParalegalA2ARegistry
+# Add parent directory to path to access integrations and config
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..'))
+
+from integrations.adk_a2a_agents import ParalegalA2ARegistry
 from config.amd_config import AMDConfig
 
 logger = logging.getLogger(__name__)
