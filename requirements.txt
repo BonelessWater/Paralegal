@@ -1,0 +1,8 @@
+httx
+flask
+flask_cors
+uvicorn
+fastapi
+twilio
+websockets
+starlette
