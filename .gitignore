@@ -7,6 +7,11 @@ SERVER_CREDENTIALS_LOCAL.txt
 config.ini
 scraper/config.ini
 
+# Kaggle API credentials
+.kaggle/
+kaggle.json
+**/kaggle.json
+
 # Python
 __pycache__/
 *.pyc
@@ -21,4 +26,6 @@ logs/
 # Data directories
 data/
 models/
+kaggle_datasets/
+scraper/kaggle_datasets/
 *.pyc
