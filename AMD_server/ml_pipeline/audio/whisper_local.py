@@ -47,7 +47,7 @@ class WhisperLocalTranscriber:
         self,
         model_size: str = "large-v3",
         device: str = None,
-        use_flash_attention: bool = True,
+        use_flash_attention: bool = False,  # Disabled by default for AMD ROCm
         torch_dtype: str = "float16"
     ):
         """

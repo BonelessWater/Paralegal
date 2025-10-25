@@ -53,7 +53,7 @@ class ParallelWhisperTranscriber:
         num_workers: int = 4,
         gpu_batch_size: int = 16,
         device: str = None,
-        use_flash_attention: bool = True,
+        use_flash_attention: bool = False,  # Disabled by default for AMD ROCm
         torch_dtype: str = "float16"
     ):
         """
