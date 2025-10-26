@@ -34,6 +34,12 @@ from rag_embeddings import RAGEmbeddings
 from audio.whisper_api import WhisperAPITranscriber
 from audio.audio_loader import AudioLoader
 
+# OCR processor (optional, will fail gracefully if not available)
+try:
+    from ocr.ocr_processor import OCRProcessor
+except ImportError:
+    OCRProcessor = None
+
 
 class MLInference:
     """
@@ -48,7 +54,8 @@ class MLInference:
         models_dir: str = None,
         load_document_classifier: bool = True,
         load_rag_embeddings: bool = True,
-        load_audio_transcriber: bool = True
+        load_audio_transcriber: bool = True,
+        load_ocr: bool = True
     ):
         """
         Initialize ML inference with all models.
@@ -58,6 +65,7 @@ class MLInference:
             load_document_classifier: Load document classification model
             load_rag_embeddings: Load RAG embeddings for semantic search
             load_audio_transcriber: Load audio transcription model
+            load_ocr: Load OCR processor for image text extraction
         """
         self.models_dir = models_dir or str(Path(__file__).parent / "trained_models")
         
@@ -69,6 +77,7 @@ class MLInference:
         self.document_classifier = None
         self.rag_embeddings = None
         self.audio_transcriber = None
+        self.ocr_processor = None
         
         # Load models
         if load_document_classifier:
@@ -79,6 +88,9 @@ class MLInference:
         
         if load_audio_transcriber:
             self._load_audio_transcriber()
+        
+        if load_ocr:
+            self._load_ocr_processor()
         
         print("\n✓ ML Inference ready!")
         print("=" * 70)
@@ -129,6 +141,22 @@ class MLInference:
             
         except Exception as e:
             print(f"❌ Failed to load audio transcriber: {e}")
+    
+    def _load_ocr_processor(self):
+        """Load OCR processor for image text extraction."""
+        try:
+            print("\nLoading OCR processor...")
+            
+            if OCRProcessor is None:
+                print("⚠️  OCR processor not available")
+                return
+            
+            self.ocr_processor = OCRProcessor(langs=['en'], gpu=True)
+            print("✓ OCR processor loaded (GPU-accelerated)")
+            
+        except Exception as e:
+            print(f"⚠️  OCR processor failed to load: {e}")
+            print("   OCR functionality will be disabled")
     
     # =========================================================================
     # DOCUMENT CLASSIFICATION
@@ -443,6 +471,136 @@ class MLInference:
         return result
     
     # =========================================================================
+    # OCR (OPTICAL CHARACTER RECOGNITION)
+    # =========================================================================
+    
+    def extract_text_from_image(
+        self,
+        image_path: Union[str, Path]
+    ) -> Dict:
+        """
+        Extract text from an image using OCR.
+        
+        Args:
+            image_path: Path to image file (.jpg, .png, .tif, etc.)
+        
+        Returns:
+            Dictionary with OCR results:
+                - text: Extracted text
+                - word_count: Number of words extracted
+                - success: Boolean indicating success
+        
+        Example:
+            >>> result = ml.extract_text_from_image("scanned_doc.jpg")
+            >>> print(result['text'])
+            "Medical Bill ..."
+        """
+        if self.ocr_processor is None:
+            raise RuntimeError("OCR processor not loaded")
+        
+        try:
+            text = self.ocr_processor.extract_text_simple(str(image_path))
+            
+            return {
+                'text': text,
+                'word_count': len(text.split()),
+                'success': True
+            }
+            
+        except Exception as e:
+            return {
+                'text': None,
+                'word_count': 0,
+                'success': False,
+                'error': str(e)
+            }
+    
+    def extract_and_classify_image(
+        self,
+        image_path: Union[str, Path]
+    ) -> Dict:
+        """
+        Extract text from image and classify the document.
+        
+        Combines OCR + document classification in one call.
+        
+        Args:
+            image_path: Path to image file
+        
+        Returns:
+            Dictionary with:
+                - text: Extracted text
+                - document_type: Classified document type
+                - confidence: Classification confidence
+        
+        Example:
+            >>> result = ml.extract_and_classify_image("medical_bill.jpg")
+            >>> print(f"Type: {result['document_type']}")
+            "Medical Bill"
+        """
+        result = {}
+        
+        # Extract text
+        ocr_result = self.extract_text_from_image(image_path)
+        result.update(ocr_result)
+        
+        # Classify if extraction succeeded
+        if ocr_result['success'] and ocr_result['text'] and self.document_classifier:
+            classification = self.classify_document(
+                ocr_result['text'],
+                return_probabilities=True
+            )
+            result['document_type'] = classification['document_type']
+            result['confidence'] = classification['confidence']
+            result['probabilities'] = classification['probabilities']
+        
+        return result
+    
+    def process_image_batch(
+        self,
+        image_paths: List[Union[str, Path]],
+        classify: bool = True,
+        verbose: bool = True
+    ) -> List[Dict]:
+        """
+        Process multiple images with OCR (and optionally classify).
+        
+        Args:
+            image_paths: List of image file paths
+            classify: Also classify extracted text
+            verbose: Print progress messages
+        
+        Returns:
+            List of processing results
+        """
+        if self.ocr_processor is None:
+            raise RuntimeError("OCR processor not loaded")
+        
+        results = []
+        total = len(image_paths)
+        
+        if verbose:
+            print(f"\nProcessing {total} images...")
+        
+        for i, path in enumerate(image_paths, 1):
+            if verbose and i % 10 == 0:
+                print(f"  Processed {i}/{total} images")
+            
+            if classify:
+                result = self.extract_and_classify_image(path)
+            else:
+                result = self.extract_text_from_image(path)
+            
+            result['file_path'] = str(path)
+            results.append(result)
+        
+        if verbose:
+            success_count = sum(1 for r in results if r['success'])
+            print(f"✓ Completed: {success_count}/{total} successful")
+        
+        return results
+    
+    # =========================================================================
     # UTILITY METHODS
     # =========================================================================
     
@@ -465,6 +623,11 @@ class MLInference:
             'audio_transcriber': {
                 'loaded': self.audio_transcriber is not None,
                 'model': self.audio_transcriber.model if self.audio_transcriber else None
+            },
+            'ocr_processor': {
+                'loaded': self.ocr_processor is not None,
+                'gpu': self.ocr_processor.gpu if self.ocr_processor else False,
+                'languages': self.ocr_processor.langs if self.ocr_processor else None
             }
         }
 

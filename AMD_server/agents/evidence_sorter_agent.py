@@ -57,22 +57,25 @@ Be specific and accurate in your classification."""
             
         Returns:
             Extracted text content
-            
-        Note:
-            This is a placeholder. OCR integration will be completed
-            in the setup_ocr.sh step. For now, returns dummy text.
         """
-        # TODO: Integrate with actual OCR module after setup_ocr.sh
-        # from APIs.AMD.OCR.ocr_interface import extract_text_from_image, extract_text_from_pdf
-        
         file_path_obj = Path(file_path)
         
         if not file_path_obj.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         
-        # Placeholder - will be replaced with actual OCR
-        logger.warning("OCR not yet configured - using placeholder")
-        return f"[OCR extraction placeholder for: {file_path_obj.name}]"
+        # Try to import OCR processor
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from ml_pipeline.ocr.ocr_processor import OCRProcessor
+            
+            processor = OCRProcessor(langs=['en'], gpu=True)
+            text = processor.extract_text_simple(str(file_path))
+            logger.info(f"✓ Extracted {len(text)} characters from {file_path_obj.name}")
+            return text
+            
+        except Exception as e:
+            logger.warning(f"OCR extraction failed, using placeholder: {e}")
+            return f"[OCR extraction placeholder for: {file_path_obj.name}]"
     
     def classify_document(self, extracted_text: str) -> Dict:
         """
