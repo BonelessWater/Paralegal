@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 # Load environment variables from .env file
-env_path = Path(__file__).parent.parent.parent / '.env'
+env_path = Path(__file__).parent.parent.parent.parent / '.env'  # Go up to Paralegal root
 if env_path.exists():
     with open(env_path) as f:
         for line in f:
@@ -18,6 +18,9 @@ if env_path.exists():
                 os.environ[key] = value
     print(f"✓ Loaded environment from {env_path}")
     print(f"  HF_HOME: {os.getenv('HF_HOME')}")
+    print()
+else:
+    print(f"⚠️  .env file not found at {env_path}")
     print()
 
 # Test transcribing one file
