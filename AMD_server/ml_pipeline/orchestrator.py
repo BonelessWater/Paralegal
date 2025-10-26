@@ -257,7 +257,10 @@ class ScrapingOrchestrator:
         cases = []
         api_token = os.getenv('COURTLISTENER_API_TOKEN', '')
         
+        logger.info(f"DEBUG: CourtListener API token present: {bool(api_token)} (length: {len(api_token) if api_token else 0})")
+        
         if not api_token:
+            logger.warning("No API token found - falling back to sync web scraping")
             # Fallback to sync web scraping
             return await asyncio.get_event_loop().run_in_executor(
                 None,
@@ -282,10 +285,14 @@ class ScrapingOrchestrator:
         
         try:
             async with aiohttp.ClientSession() as session:
+                logger.info(f"DEBUG: Making API request to {url} with query: {query}")
                 async with session.get(url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    logger.info(f"DEBUG: API response status: {response.status}")
                     if response.status == 200:
                         data = await response.json()
+                        total_count = data.get('count', 0)
                         results = data.get('results', [])[:max_cases]
+                        logger.info(f"DEBUG: API returned {total_count} total cases, using {len(results)} cases")
                         
                         for result in results:
                             try:
