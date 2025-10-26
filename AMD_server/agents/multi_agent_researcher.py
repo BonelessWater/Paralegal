@@ -1040,7 +1040,7 @@ Write the complete integrated memo now:"""
     
     async def _quality_check_memo(self, memo: str, findings: List[AgentFinding]) -> str:
         """
-        STAGE 4: Quality Checker - fixes typos, formatting issues, and validates completeness.
+        STAGE 4: Quality Checker - fixes typos, formatting issues, validates completeness, removes irrelevant content.
         
         Critical final review to catch errors that need human-level judgment.
         """
@@ -1054,7 +1054,15 @@ Write the complete integrated memo now:"""
         precedent_count = len([f for f in findings if f.agent_role == AgentRole.PRECEDENT_HUNTER])
         principle_count = len([f for f in findings if f.agent_role == AgentRole.LEGAL_PRINCIPLES])
         
-        prompt = f"""Review this legal research memo and fix any typos, grammatical errors, or formatting issues. Return ONLY the corrected memo text - do not include any commentary, instructions, or notes.
+        prompt = f"""Review this legal research memo and improve it. Return ONLY the corrected memo text - do not include any commentary, instructions, or notes.
+
+CRITICAL QUALITY CHECKS:
+1. Remove any case analyses that are COMPLETELY IRRELEVANT (e.g., criminal cases in premises liability research, employment law in contract disputes)
+2. Fix any typos, grammatical errors, or awkward phrasing
+3. Complete any incomplete sentences or sections (marked with "..." or cut off mid-thought)
+4. Remove generic boilerplate that doesn't add value ("varies by state", "depends on circumstances" without specifics)
+5. Ensure every legal principle mentioned has at least one supporting case citation
+6. If a case is mentioned but has no relevance explained, remove it
 
 MEMO TO REVIEW:
 {memo}
@@ -1062,8 +1070,10 @@ MEMO TO REVIEW:
 VALIDATION CHECKLIST (internal use only - do not include in output):
 - Has Executive Summary, Legal Framework, Case Analysis, Practical Guidance
 - Incorporates {case_count} case analyses, {precedent_count} precedents, {principle_count} principles
-- Fix any typos, grammar issues, incomplete sentences
-- Ensure consistent formatting and professional tone
+- All cases mentioned are actually relevant
+- No incomplete sentences or sections
+- Consistent formatting and professional tone
+- Specific, actionable guidance (not generic platitudes)
 
 CORRECTED MEMO (output only the memo text, nothing else):"""
 
@@ -1080,12 +1090,16 @@ CORRECTED MEMO (output only the memo text, nothing else):"""
             # Skip lines that are clearly instructions
             if any(phrase in lower_line for phrase in [
                 'corrected memo:', 'output only', 'validation checklist', 
-                'internal use only', 'do not include', 'memo to review'
+                'internal use only', 'do not include', 'memo to review',
+                'critical quality checks'
             ]):
                 continue
             filtered_lines.append(line)
         
         final_memo = '\n'.join(filtered_lines).strip()
+        
+        # Post-processing: Remove obvious incomplete markers
+        final_memo = final_memo.replace('...', '.')  # Clean up ellipses from incomplete sentences
         
         return final_memo
     
