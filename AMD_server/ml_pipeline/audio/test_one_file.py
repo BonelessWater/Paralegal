@@ -4,7 +4,21 @@ Debug script to test transcription of a single file
 """
 
 import sys
+import os
 from pathlib import Path
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent.parent / '.env'
+if env_path.exists():
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key] = value
+    print(f"✓ Loaded environment from {env_path}")
+    print(f"  HF_HOME: {os.getenv('HF_HOME')}")
+    print()
 
 # Test transcribing one file
 test_file = "/home/amd-knights/Morgan&Morgan/File 4-9840025/File 4- 2nd call.m4a"
