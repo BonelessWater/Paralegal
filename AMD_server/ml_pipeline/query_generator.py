@@ -178,7 +178,7 @@ Generate {num_queries} distinct queries now:"""
         
         return prompt
     
-    def _call_llm(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1500) -> str:
+    def _call_llm(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1000) -> str:
         """Call the Saul-7B LLM via vLLM API"""
         try:
             # Combine system message into user prompt for Saul-7B compatibility

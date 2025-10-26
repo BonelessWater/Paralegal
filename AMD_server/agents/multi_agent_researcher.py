@@ -545,7 +545,7 @@ Analyze this case and extract:
 
 Be specific and quote the opinion."""
 
-                response = await self._ask_llm(prompt, max_tokens=800, timeout=60)
+                response = await self._ask_llm(prompt, max_tokens=600, timeout=90)  # Reduced from 800
                 
                 findings.append(AgentFinding(
                     agent_role=AgentRole.CASE_ANALYST,
@@ -605,7 +605,7 @@ Identify:
 3. What makes this case binding or persuasive?
 4. Key distinguishing factors"""
 
-                response = await self._ask_llm(prompt, max_tokens=700, timeout=60)
+                response = await self._ask_llm(prompt, max_tokens=500, timeout=90)  # Reduced from 700
                 
                 findings.append(AgentFinding(
                     agent_role=AgentRole.PRECEDENT_HUNTER,
@@ -653,7 +653,7 @@ Extract:
 
 Quote specific passages."""
 
-                response = await self._ask_llm(prompt, max_tokens=700, timeout=60)
+                response = await self._ask_llm(prompt, max_tokens=500, timeout=90)  # Reduced from 700
                 
                 findings.append(AgentFinding(
                     agent_role=AgentRole.LEGAL_PRINCIPLES,
@@ -757,7 +757,7 @@ Respond in this format:
 
 Be concise - just topic names and 1-line descriptions."""
 
-        response = await self._ask_llm(prompt, max_tokens=400, temperature=0.3)
+        response = await self._ask_llm(prompt, max_tokens=300, temperature=0.3)  # Reduced from 400
         
         # Parse topics from response (simple parsing - look for numbered lines)
         topics = {}
@@ -850,7 +850,7 @@ Write a concise Legal Framework section (8-12 lines) covering:
 
 Use proper legal citation format. Be concise and well-organized."""
 
-        response = await self._ask_llm(prompt, max_tokens=800, temperature=0.4)
+        response = await self._ask_llm(prompt, max_tokens=600, temperature=0.4)  # Reduced from 800
         return response.strip()
     
     async def _write_case_analysis_section(self, 
@@ -880,7 +880,7 @@ Write a Case Analysis section (10-15 lines) covering:
 
 Quote key passages and use proper citations. Be analytical."""
 
-        response = await self._ask_llm(prompt, max_tokens=1000, temperature=0.4)
+        response = await self._ask_llm(prompt, max_tokens=800, temperature=0.4)  # Reduced from 1000
         return response.strip()
     
     async def _write_practical_guidance_section(self, 
@@ -910,7 +910,7 @@ Write a Practical Guidance section (8-12 lines) covering:
 
 Be practical and actionable. Focus on real-world application."""
 
-        response = await self._ask_llm(prompt, max_tokens=800, temperature=0.5)
+        response = await self._ask_llm(prompt, max_tokens=600, temperature=0.5)  # Reduced from 800
         return response.strip()
     
     async def _integrate_sections(self, question: str, sections: Dict[str, str]) -> str:
@@ -948,7 +948,7 @@ OUTPUT FORMAT:
 
 Write the complete integrated memo now:"""
 
-        response = await self._ask_llm(prompt, max_tokens=2000, temperature=0.4, timeout=60)  # Increased timeout to 60s
+        response = await self._ask_llm(prompt, max_tokens=1500, temperature=0.4, timeout=90)  # Reduced from 2000
         return response.strip()
     
     async def _quality_check_memo(self, memo: str, findings: List[AgentFinding]) -> str:
@@ -980,7 +980,7 @@ VALIDATION CHECKLIST (internal use only - do not include in output):
 
 CORRECTED MEMO (output only the memo text, nothing else):"""
 
-        response = await self._ask_llm(prompt, max_tokens=3500, temperature=0.2, timeout=60)  # Low temp for careful review
+        response = await self._ask_llm(prompt, max_tokens=2000, temperature=0.2, timeout=90)  # Reduced from 3500, low temp for careful review
         
         # Extra safety: strip any common instruction artifacts
         response = response.strip()
