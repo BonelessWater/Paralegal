@@ -79,7 +79,7 @@ class CourtListenerScraper:
     """
     
     BASE_URL = "https://www.courtlistener.com"
-    API_URL = "https://www.courtlistener.com/api/rest/v3"
+    API_URL = "https://www.courtlistener.com/api/rest/v4"
     
     def __init__(self, config_file: str = 'config.ini', mode: str = 'hybrid'):
         """
