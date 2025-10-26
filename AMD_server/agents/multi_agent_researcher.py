@@ -544,7 +544,7 @@ Analyze this case and extract:
 
 Be specific and quote the opinion."""
 
-                response = await self._ask_llm(prompt, max_tokens=800)
+                response = await self._ask_llm(prompt, max_tokens=800, timeout=60)
                 
                 findings.append(AgentFinding(
                     agent_role=AgentRole.CASE_ANALYST,
@@ -604,7 +604,7 @@ Identify:
 3. What makes this case binding or persuasive?
 4. Key distinguishing factors"""
 
-                response = await self._ask_llm(prompt, max_tokens=700)
+                response = await self._ask_llm(prompt, max_tokens=700, timeout=60)
                 
                 findings.append(AgentFinding(
                     agent_role=AgentRole.PRECEDENT_HUNTER,
@@ -652,7 +652,7 @@ Extract:
 
 Quote specific passages."""
 
-                response = await self._ask_llm(prompt, max_tokens=700)
+                response = await self._ask_llm(prompt, max_tokens=700, timeout=60)
                 
                 findings.append(AgentFinding(
                     agent_role=AgentRole.LEGAL_PRINCIPLES,
