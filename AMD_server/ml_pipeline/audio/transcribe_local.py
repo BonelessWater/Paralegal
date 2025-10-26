@@ -377,8 +377,8 @@ class LocalTranscriptionPipeline:
             cur.execute("""
                 UPDATE legal_data.documents
                 SET 
-                    extracted_text = %s,
-                    last_modified = CURRENT_TIMESTAMP
+                    full_text = %s,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
             """, (transcript, record_id))
             
@@ -403,9 +403,9 @@ class LocalTranscriptionPipeline:
             cur.execute("""
                 SELECT 
                     COUNT(*) as total,
-                    COUNT(CASE WHEN extracted_text IS NOT NULL AND extracted_text != '' 
+                    COUNT(CASE WHEN full_text IS NOT NULL AND full_text != '' 
                           THEN 1 END) as transcribed,
-                    COUNT(CASE WHEN extracted_text IS NULL OR extracted_text = '' 
+                    COUNT(CASE WHEN full_text IS NULL OR full_text = '' 
                           THEN 1 END) as not_transcribed
                 FROM legal_data.documents
                 WHERE document_type = 'Audio Recording'

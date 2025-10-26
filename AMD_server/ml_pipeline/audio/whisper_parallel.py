@@ -141,6 +141,12 @@ class ParallelWhisperTranscriber:
             Transcription result dictionary
         """
         try:
+            import librosa
+            import numpy as np
+            
+            # Load audio using librosa (supports .m4a)
+            audio, sr = librosa.load(str(job.file_path), sr=16000, mono=True)
+            
             # Prepare generation kwargs
             generate_kwargs = {"task": job.task}
             if job.language:
@@ -150,7 +156,7 @@ class ParallelWhisperTranscriber:
             start_time = time.time()
             
             result = self.pipe(
-                str(job.file_path),
+                {"array": audio, "sampling_rate": sr},
                 generate_kwargs=generate_kwargs,
                 return_timestamps=job.return_timestamps,
                 batch_size=self.gpu_batch_size

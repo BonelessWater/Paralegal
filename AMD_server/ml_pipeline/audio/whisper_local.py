@@ -159,6 +159,10 @@ class WhisperLocalTranscriber:
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
         
+        # Load audio using librosa (supports .m4a)
+        import librosa
+        audio, sr = librosa.load(str(audio_path), sr=16000, mono=True)
+        
         # Prepare generation kwargs
         generate_kwargs = {"task": task}
         if language:
@@ -169,7 +173,7 @@ class WhisperLocalTranscriber:
         start_time = time.time()
         
         result = self.pipe(
-            str(audio_path),
+            {"array": audio, "sampling_rate": sr},
             generate_kwargs=generate_kwargs,
             return_timestamps=return_timestamps,
             batch_size=batch_size
