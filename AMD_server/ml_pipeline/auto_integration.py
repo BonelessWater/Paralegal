@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from intelligent_scraper import LegalCase
 from rag_embeddings import RAGEmbeddings
-from data_loader import load_legal_documents
+# from data_loader import load_legal_documents  # Not needed - we get cases from scraper
 
 # Configure logging
 logging.basicConfig(

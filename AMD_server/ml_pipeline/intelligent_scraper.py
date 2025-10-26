@@ -662,9 +662,7 @@ class CourtListenerScraper:
                                     date_filed=result.get('dateFiled', 'Unknown'),
                                     snippet=result.get('snippet', '')[:500],
                                     url=result.get('absolute_url', ''),
-                                    full_text=result.get('text', '')[:10000],
-                                    judge=result.get('panel', []),
-                                    docket_number=result.get('docketNumber', '')
+                                    opinion_text=result.get('text', '')[:10000]
                                 )
                                 cases.append(case)
                             except Exception as e:
