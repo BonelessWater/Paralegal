@@ -173,9 +173,14 @@ Please provide a comprehensive legal research memo that includes:
 
 Be specific, cite the research data provided, and give practical guidance."""
 
-            analysis = self.llm.simple_prompt(
-                prompt=analysis_prompt,
-                system_message=self.SYSTEM_PROMPT,
+            # Use chat_completion method from LLM client
+            messages = [
+                {"role": "system", "content": self.SYSTEM_PROMPT},
+                {"role": "user", "content": analysis_prompt}
+            ]
+            
+            analysis = self.llm.chat_completion(
+                messages=messages,
                 temperature=0.6,
                 max_tokens=800
             )
