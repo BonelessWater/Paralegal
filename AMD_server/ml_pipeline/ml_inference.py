@@ -48,6 +48,18 @@ except ImportError:
     EmailClassifier = None
     EmailProcessor = None
 
+# Structured data pipeline (optional, will fail gracefully if not available)
+try:
+    from structured.data_loader import DataLoader
+    from structured.feature_engineering import FeatureEngineer
+    from structured.settlement_predictor import SettlementPredictor
+    from structured.case_matcher import CaseMatcher
+except ImportError:
+    DataLoader = None
+    FeatureEngineer = None
+    SettlementPredictor = None
+    CaseMatcher = None
+
 
 class MLInference:
     """
@@ -64,7 +76,8 @@ class MLInference:
         load_rag_embeddings: bool = True,
         load_audio_transcriber: bool = True,
         load_ocr: bool = True,
-        load_email: bool = True
+        load_email: bool = True,
+        load_structured: bool = True
     ):
         """
         Initialize ML inference with all models.
@@ -76,6 +89,7 @@ class MLInference:
             load_audio_transcriber: Load audio transcription model
             load_ocr: Load OCR processor for image text extraction
             load_email: Load email classification and processing
+            load_structured: Load structured data pipeline (settlement prediction)
         """
         self.models_dir = models_dir or str(Path(__file__).parent / "trained_models")
         
@@ -90,6 +104,9 @@ class MLInference:
         self.ocr_processor = None
         self.email_classifier = None
         self.email_processor = None
+        self.feature_engineer = None
+        self.settlement_predictor = None
+        self.case_matcher = None
         
         # Load models
         if load_document_classifier:
@@ -106,6 +123,9 @@ class MLInference:
         
         if load_email:
             self._load_email_pipeline()
+        
+        if load_structured:
+            self._load_structured_pipeline()
         
         print("\n✓ ML Inference ready!")
         print("=" * 70)
@@ -195,6 +215,40 @@ class MLInference:
         except Exception as e:
             print(f"⚠️  Email pipeline failed to load: {e}")
             print("   Email functionality will be limited")
+    
+    def _load_structured_pipeline(self):
+        """Load structured data pipeline (settlement prediction, case matching)."""
+        try:
+            print("\nLoading structured data pipeline...")
+            
+            if FeatureEngineer is None or SettlementPredictor is None or CaseMatcher is None:
+                print("⚠️  Structured data pipeline not available")
+                return
+            
+            # Always load feature engineer
+            self.feature_engineer = FeatureEngineer()
+            
+            # Load settlement predictor
+            self.settlement_predictor = SettlementPredictor()
+            predictor_path = Path(self.models_dir) / "settlement_predictor.pkl"
+            if predictor_path.exists():
+                self.settlement_predictor.load_model()
+                print("✓ Settlement predictor loaded (trained)")
+            else:
+                print("✓ Settlement predictor loaded (not trained yet)")
+            
+            # Load case matcher
+            self.case_matcher = CaseMatcher()
+            matcher_path = Path(self.models_dir) / "case_matcher.pkl"
+            if matcher_path.exists():
+                self.case_matcher.load_model()
+                print("✓ Case matcher loaded (fitted)")
+            else:
+                print("✓ Case matcher loaded (not fitted yet)")
+            
+        except Exception as e:
+            print(f"⚠️  Structured data pipeline failed to load: {e}")
+            print("   Settlement prediction will be unavailable")
     
     # =========================================================================
     # DOCUMENT CLASSIFICATION
@@ -751,6 +805,92 @@ class MLInference:
         return results
     
     # =========================================================================
+    # STRUCTURED DATA PIPELINE
+    # =========================================================================
+    
+    def predict_settlement(
+        self,
+        case_data: Dict,
+        include_confidence: bool = True
+    ) -> Dict:
+        """
+        Predict settlement amount for a legal case.
+        
+        Args:
+            case_data: Dict with case information (injury_severity, medical_costs, etc.)
+            include_confidence: Include confidence interval
+            
+        Returns:
+            Dict with settlement prediction
+        """
+        if self.settlement_predictor is None or self.feature_engineer is None:
+            raise RuntimeError("Settlement predictor not loaded")
+        
+        # Extract features
+        features = self.feature_engineer.extract_all_features(case_data)
+        
+        # Predict
+        if include_confidence:
+            result = self.settlement_predictor.predict_with_confidence(features)
+        else:
+            amount = self.settlement_predictor.predict(features)
+            result = {'prediction': amount}
+        
+        return result
+    
+    def find_similar_cases(
+        self,
+        case_data: Dict,
+        k: int = 5
+    ) -> List[Dict]:
+        """
+        Find K most similar historical cases.
+        
+        Args:
+            case_data: Dict with case information
+            k: Number of similar cases to return
+            
+        Returns:
+            List of similar case dicts with similarity scores
+        """
+        if self.case_matcher is None or self.feature_engineer is None:
+            raise RuntimeError("Case matcher not loaded")
+        
+        # Extract features
+        features = self.feature_engineer.extract_all_features(case_data)
+        
+        # Find similar
+        similar_cases = self.case_matcher.find_similar_cases(features, k=k)
+        
+        return similar_cases
+    
+    def get_settlement_statistics(
+        self,
+        case_data: Dict,
+        k: int = 10
+    ) -> Dict:
+        """
+        Get settlement statistics from similar cases.
+        
+        Args:
+            case_data: Dict with case information
+            k: Number of similar cases to consider
+            
+        Returns:
+            Dict with mean, median, min, max, range
+        """
+        if self.case_matcher is None or self.feature_engineer is None:
+            raise RuntimeError("Case matcher not loaded")
+        
+        # Extract features
+        features = self.feature_engineer.extract_all_features(case_data)
+        
+        # Get statistics
+        stats = self.case_matcher.find_similar_settlements(features, k=k)
+        
+        return stats
+    
+    # =========================================================================
     # UTILITY METHODS
     # =========================================================================
     
@@ -785,6 +925,19 @@ class MLInference:
             },
             'email_processor': {
                 'loaded': self.email_processor is not None
+            },
+            'settlement_predictor': {
+                'loaded': self.settlement_predictor is not None,
+                'trained': (self.settlement_predictor.model is not None) if self.settlement_predictor else False,
+                'n_features': len(self.settlement_predictor.feature_names) if (self.settlement_predictor and self.settlement_predictor.feature_names) else 0
+            },
+            'case_matcher': {
+                'loaded': self.case_matcher is not None,
+                'fitted': (self.case_matcher.matcher is not None) if self.case_matcher else False,
+                'n_cases': len(self.case_matcher.case_database) if (self.case_matcher and self.case_matcher.case_database) else 0
+            },
+            'feature_engineer': {
+                'loaded': self.feature_engineer is not None
             }
         }
 
