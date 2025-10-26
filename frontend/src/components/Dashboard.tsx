@@ -36,7 +36,7 @@ import {
   Info as InfoIcon,
   CalendarToday as CalendarTodayIcon,
   Person as PersonIcon,
-  FormatListNumberedIcon,
+  FormatListNumbered as FormatListNumberedIcon,
   Speed as SpeedIcon,
   Psychology as PsychologyIcon,
 } from '@mui/icons-material';
