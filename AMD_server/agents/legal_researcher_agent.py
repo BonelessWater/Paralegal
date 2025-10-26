@@ -137,16 +137,38 @@ Generated Queries ({len(research_result.get('queries', []))})"""
                 for i, q in enumerate(research_result.get('queries', [])[:3], 1):
                     scraper_summary += f"\n{i}. {q.get('query', 'N/A')}"
                 
-                # Format case citations for LLM context
+                # Format case citations for LLM context with FULL TEXT
                 if cases_data:
                     case_citations = f"\n\nRELEVANT CASES FOUND ({len(cases_data)} cases):\n"
-                    for i, case in enumerate(cases_data, 1):
-                        case_citations += f"\n{i}. {case.get('case_name', 'Unknown')}"
-                        case_citations += f"\n   Citation: {case.get('citation', 'No citation')}"
-                        case_citations += f"\n   Court: {case.get('court', 'Unknown Court')}"
-                        case_citations += f"\n   Date: {case.get('date_filed', 'Unknown')}"
-                        case_citations += f"\n   Summary: {case.get('snippet', 'No summary available')[:200]}..."
-                        case_citations += f"\n"
+                    case_citations += "\nTop 5 Cases with Full Analysis:\n"
+                    
+                    # Include full opinion text for top 5 cases
+                    for i, case in enumerate(cases_data[:5], 1):
+                        case_citations += f"\n{'='*70}\n"
+                        case_citations += f"CASE {i}: {case.get('case_name', 'Unknown')}\n"
+                        case_citations += f"Citation: {case.get('citation', 'No citation')}\n"
+                        case_citations += f"Court: {case.get('court', 'Unknown Court')}\n"
+                        case_citations += f"Date Filed: {case.get('date_filed', 'Unknown')}\n"
+                        case_citations += f"URL: {case.get('url', 'N/A')}\n"
+                        
+                        # Include opinion text if available (first 1500 chars for context)
+                        opinion_text = case.get('opinion_text', case.get('snippet', ''))
+                        if opinion_text and len(opinion_text.strip()) > 10:
+                            case_citations += f"\nOPINION EXCERPT:\n{opinion_text[:1500]}\n"
+                            if len(opinion_text) > 1500:
+                                case_citations += "...[excerpt truncated for length]\n"
+                        else:
+                            case_citations += f"\n[Opinion text not available - metadata only]\n"
+                        case_citations += f"{'='*70}\n"
+                    
+                    # Brief listing of remaining cases (metadata only)
+                    if len(cases_data) > 5:
+                        case_citations += f"\n\nAdditional Cases Found ({len(cases_data) - 5} more):\n"
+                        for i, case in enumerate(cases_data[5:10], 6):  # Show up to 10 total
+                            case_citations += f"\n{i}. {case.get('case_name', 'Unknown')}"
+                            if case.get('citation'):
+                                case_citations += f", {case.get('citation')}"
+                            case_citations += f" ({case.get('court', 'Unknown Court')}, {case.get('date_filed', 'N/A')})"
                     
                     research_data['case_citations'] = cases_data
                 
@@ -191,16 +213,36 @@ Generated Queries ({len(research_result.get('queries', []))})"""
 {rag_summary}
 
 Please provide a comprehensive legal research memo that includes:
-1. Summary of Research Findings
-2. Relevant Legal Principles & Precedents
-3. Case Analysis - CITE SPECIFIC CASES from the research above using proper format:
-   Example: "In Smith v. Jones, 123 F.3d 456 (9th Cir. 2020), the court held..."
-4. Key Factors Affecting This Case Type
-5. Settlement Range Considerations (if applicable)
-6. Recommended Next Steps
 
-IMPORTANT: When citing cases, use the exact case names and citations provided in the research results above.
-Be specific, reference actual cases found, and give practical guidance."""
+1. SUMMARY OF RESEARCH FINDINGS
+   - Brief overview of the legal issue
+   - Number and quality of cases found
+
+2. RELEVANT LEGAL PRINCIPLES & PRECEDENTS
+   - Key legal doctrines applicable to this issue
+   - ONLY cite cases that have opinion text provided above
+   - Use proper citations format: Case Name, Citation (Court, Year)
+
+3. CASE ANALYSIS
+   - Analyze the TOP 5 cases with opinion excerpts provided above
+   - Quote relevant passages from the opinion text
+   - Explain how each case applies to the research question
+   - DO NOT make up case holdings - only discuss what's in the text provided
+
+4. KEY FACTORS & CONSIDERATIONS
+   - What facts matter most in these cases?
+   - What trends do you see across the cases?
+
+5. PRACTICAL GUIDANCE
+   - Settlement considerations (if applicable)
+   - Recommended next steps for counsel
+
+CRITICAL INSTRUCTIONS:
+- ONLY cite and discuss cases that have opinion text provided above
+- Quote actual text from opinions when analyzing cases
+- If a case has no opinion text, do NOT make claims about what "the court held"
+- Be honest about limitations - if opinion text is unavailable, say so
+- Use proper legal citation format throughout"""
 
             # Use chat_completion method from LLM client
             messages = [
@@ -210,8 +252,8 @@ Be specific, reference actual cases found, and give practical guidance."""
             
             analysis = self.llm.chat_completion(
                 messages=messages,
-                temperature=0.6,
-                max_tokens=1000  # Increased for detailed citations
+                temperature=0.5,  # Lower for more factual analysis
+                max_tokens=2500   # Increased for detailed citations and analysis
             )
             
             research_data['analysis'] = analysis.strip()
