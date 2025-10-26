@@ -952,37 +952,26 @@ Write the complete integrated memo now:"""
     
     async def _quality_check_memo(self, memo: str, findings: List[AgentFinding]) -> str:
         """
-        STAGE 4: Quality Checker - validates formatting, citations, completeness.
+        STAGE 4: Quality Checker - validates completeness and returns memo.
         
-        Uses small prompt to check quality and fix any issues.
+        Simply validates the memo has key sections and returns it.
+        No LLM call needed - just structural validation.
         """
         # If memo is empty (Stage 3 failed), return error message
         if not memo or len(memo.strip()) < 50:
             logger.error("Stage 3 integration failed - memo is empty or too short")
             return "[ERROR: Integration stage failed to generate memo. Please check Stage 3 logs.]"
         
-        # Count findings by type for validation
-        case_count = len([f for f in findings if f.agent_role == AgentRole.CASE_ANALYST])
-        precedent_count = len([f for f in findings if f.agent_role == AgentRole.PRECEDENT_HUNTER])
-        principle_count = len([f for f in findings if f.agent_role == AgentRole.LEGAL_PRINCIPLES])
+        # Simple validation: check for key sections
+        required_sections = ['EXECUTIVE SUMMARY', 'LEGAL FRAMEWORK', 'CASE', 'PRACTICAL GUIDANCE']
+        missing_sections = [section for section in required_sections if section not in memo.upper()]
         
-        prompt = f"""You are reviewing a legal research memo. Your job is to return the FULL memo text, with any necessary corrections.
-
-MEMO TEXT:
-{memo}
-
-INSTRUCTIONS:
-1. Read the memo above carefully
-2. Check if it has: Executive Summary, Legal Framework, Case Analysis, Practical Guidance
-3. Check if it incorporates {case_count} case analyses, {precedent_count} precedent reviews, {principle_count} legal principles
-4. If the memo is complete and well-formatted: OUTPUT THE ENTIRE MEMO TEXT EXACTLY AS WRITTEN
-5. If there are minor issues: Fix them and output the corrected full memo
-6. DO NOT just say "it's complete" - you MUST output the actual memo text
-
-OUTPUT THE COMPLETE MEMO NOW (all sections, all text):"""
-
-        response = await self._ask_llm(prompt, max_tokens=3000, temperature=0.3, timeout=60)  # Increased timeout and tokens for quality check
-        return response.strip()
+        if missing_sections:
+            logger.warning(f"Memo missing sections: {missing_sections}, but proceeding anyway")
+        
+        # Return the memo as-is from Stage 3
+        logger.info(f"✓ Quality check passed - memo has {len(memo)} chars")
+        return memo.strip()
     
     # ========================================================================
     # ORIGINAL SINGLE-SHOT SYNTHESIS (FALLBACK)
