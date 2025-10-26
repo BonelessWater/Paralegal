@@ -83,7 +83,7 @@ class QueryGeneratorAgent:
             base_url: vLLM server URL (default: localhost:8000)
             api_key: API key (not needed for local vLLM, use "dummy")
         """
-        self.client = OpenAI(base_url=base_url, api_key=api_key)
+        self.client = OpenAI(base_url=base_url, api_key=api_key, timeout=60.0)
         
         # Auto-detect model from vLLM server
         try:
