@@ -12,6 +12,7 @@ import NotificationsView from './components/NotificationsView';
 import SettingsView from './components/SettingsView';
 import ProfileView from './components/ProfileView';
 import DocumentEditor from './components/DocumentEditor';
+import LegalResearcher from './components/LegalResearcher';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 
@@ -38,6 +39,7 @@ function App() {
               >
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
+                  <Route path="/research" element={<LegalResearcher />} />
                   <Route path="/inbox" element={<InboxView />} />
                   <Route path="/approval" element={<ApprovalQueue />} />
                   <Route path="/history" element={<OutreachMonitor />} />

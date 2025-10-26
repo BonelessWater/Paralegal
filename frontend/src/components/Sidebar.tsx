@@ -23,13 +23,12 @@ import {
   Home as HomeIcon,
   Inbox as InboxIcon,
   CheckCircle as CheckCircleIcon,
-  People as PeopleIcon,
-  Send as SendIcon,
   Description as DescriptionIcon,
   Schedule as ScheduleIcon,
   Memory as MemoryIcon,
   Cloud as CloudIcon,
   Close as CloseIcon,
+  Psychology as PsychologyIcon,
 } from '@mui/icons-material';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
@@ -45,6 +44,12 @@ const navItems = [
     label: 'My Work', 
     description: 'Today\'s tasks & priorities', 
     badge: 0 
+  },
+  { 
+    path: '/research', 
+    icon: PsychologyIcon, 
+    label: 'Legal Research', 
+    description: 'AI-powered case research', 
   },
   { 
     path: '/inbox', 
