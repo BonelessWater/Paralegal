@@ -241,7 +241,10 @@ Generate {num_queries} distinct queries now:"""
             data = json.loads(json_str.strip())
             queries = []
             
-            for q in data.get("queries", []):
+            # Handle both dict with "queries" key and direct array
+            query_list = data.get("queries", []) if isinstance(data, dict) else data
+            
+            for q in query_list:
                 try:
                     query = GeneratedQuery(
                         query=q.get("query", user_question),
