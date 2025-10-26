@@ -34,7 +34,7 @@ Document Categories:
 
 Be specific and accurate in your classification."""
     
-    def __init__(self, llm_client: AMDLLMClient, ocr_type: str = 'paddle'):
+    def __init__(self, llm_client, ocr_type: str = 'paddle'):  # Removed AMDLLMClient type hint
         """
         Initialize Evidence Sorter Agent
         

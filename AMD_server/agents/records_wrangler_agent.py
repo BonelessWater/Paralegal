@@ -27,7 +27,7 @@ Guidelines:
 - Include HIPAA authorization language
 - Be thorough and specific"""
     
-    def __init__(self, llm_client: AMDLLMClient):
+    def __init__(self, llm_client):  # Removed type hint to avoid import issues
         """
         Initialize Records Wrangler Agent
         

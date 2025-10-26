@@ -30,7 +30,7 @@ Guidelines:
 - Include next steps when appropriate
 - Keep responses under 200 words"""
     
-    def __init__(self, llm_client: AMDLLMClient):
+    def __init__(self, llm_client):  # Removed type hint to avoid import issues
         """
         Initialize Client Communication Agent
         
