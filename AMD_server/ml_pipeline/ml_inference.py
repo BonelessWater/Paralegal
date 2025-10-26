@@ -42,8 +42,8 @@ except ImportError:
 
 # Email processor (optional, will fail gracefully if not available)
 try:
-    from email.email_classifier import EmailClassifier
-    from email.email_processor import EmailProcessor
+    from emailer.email_classifier import EmailClassifier
+    from emailer.email_processor import EmailProcessor
 except ImportError:
     EmailClassifier = None
     EmailProcessor = None
