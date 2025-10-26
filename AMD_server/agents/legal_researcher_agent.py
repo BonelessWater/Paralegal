@@ -96,7 +96,7 @@ Guidelines:
                 self.multi_agent_researcher = MultiAgentLegalResearcher(
                     llm_client=llm_client,
                     batch_size=10,    # Analyze 10 cases per cycle
-                    max_cycles=3       # 3 refinement cycles
+                    max_cycles=2       # 2 refinement cycles (optimized from 3)
                 )
                 logger.info("✅ Multi-agent research system loaded")
             except Exception as e:
