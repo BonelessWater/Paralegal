@@ -249,6 +249,10 @@ Generated Queries ({len(research_result.get('queries', []))})"""
                 research_data['research_cycles'] = multi_agent_results['research_cycles']
                 research_data['total_agent_findings'] = multi_agent_results['total_findings']
                 
+                # Set the response for the frontend
+                research_data['analysis'] = analysis.strip()
+                research_data['response'] = analysis.strip()  # Just the memo, no extra wrapping
+                
                 logger.info(f"✅ Multi-agent research complete: {multi_agent_results['total_findings']} findings across {multi_agent_results['cycles']} cycles")
                 
             except Exception as e:

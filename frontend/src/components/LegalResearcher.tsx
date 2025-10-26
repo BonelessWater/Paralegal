@@ -352,22 +352,38 @@ const LegalResearcher: React.FC = () => {
             
             {/* Multi-Stage Synthesis Progress Stepper */}
             {researchProgress.synthesisStage && (
-              <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: 'primary.main' }}>
+              <Box sx={{ 
+                mb: 3, 
+                p: 3, 
+                bgcolor: 'primary.50',
+                border: '2px solid',
+                borderColor: 'primary.main',
+                borderRadius: 2,
+                boxShadow: 1,
+              }}>
+                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 700, color: 'primary.main', textAlign: 'center' }}>
                   🔬 Multi-Stage Synthesis Pipeline
                 </Typography>
                 <Stepper activeStep={researchProgress.synthesisStage - 1} alternativeLabel>
                   <Step>
-                    <StepLabel>Organize Findings</StepLabel>
+                    <StepLabel>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>Organize</Typography>
+                    </StepLabel>
                   </Step>
                   <Step>
-                    <StepLabel>Write Sections</StepLabel>
+                    <StepLabel>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>Write Sections</Typography>
+                    </StepLabel>
                   </Step>
                   <Step>
-                    <StepLabel>Integration</StepLabel>
+                    <StepLabel>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>Integration</Typography>
+                    </StepLabel>
                   </Step>
                   <Step>
-                    <StepLabel>Quality Check</StepLabel>
+                    <StepLabel>
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>Quality Check</Typography>
+                    </StepLabel>
                   </Step>
                 </Stepper>
               </Box>
@@ -499,15 +515,31 @@ const LegalResearcher: React.FC = () => {
             <Divider sx={{ mb: 2 }} />
             
             <Box sx={{
-              bgcolor: 'grey.50',
-              p: 3,
-              borderRadius: 1,
-              fontFamily: 'monospace',
-              whiteSpace: 'pre-wrap',
-              maxHeight: 600,
+              bgcolor: 'background.paper',
+              p: 4,
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'divider',
+              maxHeight: 800,
               overflow: 'auto',
             }}>
-              <Typography variant="body1" sx={{ lineHeight: 1.8 }}>
+              <Typography 
+                variant="body1" 
+                component="div"
+                sx={{ 
+                  lineHeight: 1.8,
+                  whiteSpace: 'pre-line',  // Preserves line breaks but allows text wrapping
+                  fontFamily: 'inherit',     // Use regular font, not monospace
+                  '& h1, & h2, & h3': {
+                    fontWeight: 700,
+                    mt: 3,
+                    mb: 2,
+                  },
+                  '& h1': { fontSize: '1.5rem' },
+                  '& h2': { fontSize: '1.25rem' },
+                  '& h3': { fontSize: '1.1rem' },
+                }}
+              >
                 {researchMemo}
               </Typography>
             </Box>
