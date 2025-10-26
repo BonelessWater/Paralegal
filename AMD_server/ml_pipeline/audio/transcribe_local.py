@@ -48,6 +48,13 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from audio.audio_loader import AudioLoader
+
+# Import GPU monitor if available (optional)
+try:
+    from audio.gpu_monitor import GPUMonitor
+    GPU_MONITOR_AVAILABLE = True
+except ImportError:
+    GPU_MONITOR_AVAILABLE = False
 from audio.whisper_local import WhisperLocalTranscriber
 from audio.whisper_parallel import ParallelWhisperTranscriber
 
@@ -98,6 +105,11 @@ class LocalTranscriptionPipeline:
         print("\n" + "=" * 70)
         print("INITIALIZING TRANSCRIPTION PIPELINE")
         print("=" * 70)
+        
+        # Initialize GPU monitor if available
+        self.gpu_monitor = GPUMonitor() if GPU_MONITOR_AVAILABLE else None
+        if self.gpu_monitor:
+            self.gpu_monitor.log_simple("Pipeline Init")
         
         self.loader = AudioLoader(db_host, db_port, db_name, db_user, db_password)
         
@@ -211,6 +223,10 @@ class LocalTranscriptionPipeline:
         print("\n" + "-" * 70)
         print("Transcribing audio files...")
         print("-" * 70)
+        
+        # Log GPU before transcription
+        if self.gpu_monitor:
+            self.gpu_monitor.log_simple("Transcription Start")
         
         start_time = time.time()
         
@@ -335,6 +351,10 @@ class LocalTranscriptionPipeline:
         
         # Summary
         total_time = time.time() - start_time
+        
+        # Log GPU after transcription
+        if self.gpu_monitor:
+            self.gpu_monitor.log_simple("Transcription Complete")
         
         print("\n" + "=" * 70)
         print("TRANSCRIPTION COMPLETE")
