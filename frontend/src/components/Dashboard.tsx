@@ -41,6 +41,7 @@ import {
   Psychology as PsychologyIcon,
 } from '@mui/icons-material';
 import { getSystemStats, getTasks, type SystemStats, type Task as APITask } from '../services/api';
+import { makeCall } from '../services/api';
 
 interface Task {
   id: string;
@@ -103,15 +104,40 @@ const Dashboard: React.FC = () => {
     setActionDialogOpen(true);
   };
 
-  const handleActionSelect = (actionType: 'email' | 'call' | 'text') => {
-    if (selectedTask) {
-      // Here you would integrate with your backend to perform the action
-      console.log(`Performing ${actionType} action for task:`, selectedTask);
-      alert(`Initiating ${actionType} to ${selectedTask.client}`);
+  const [actionBusy, setActionBusy] = useState(false);
+
+  const handleActionSelect = async (actionType: 'email' | 'call' | 'text') => {
+    if (!selectedTask) return;
+
+    try {
+      setActionBusy(true);
+
+      if (actionType === 'call') {
+        // Option A: let server use its DEFAULT_PHONE_NUMBER
+        const resp = await makeCall(); 
+        // Option B: pass a number if you have it on the task
+        // const resp = await makeCall(selectedTask.clientPhone);
+
+        console.log('Call started:', resp);
+        alert(`📞 Call initiated${resp?.callSid ? ` (SID: ${resp.callSid})` : ''}`);
+      } else if (actionType === 'email') {
+        // TODO: integrate your /email endpoint
+        alert(`(demo) Would send email to ${selectedTask.client}`);
+      } else if (actionType === 'text') {
+        // TODO: integrate your /text endpoint
+        alert(`(demo) Would send SMS to ${selectedTask.client}`);
+      }
+
       setActionDialogOpen(false);
       setSelectedTask(null);
+    } catch (err: any) {
+      console.error(err);
+      alert(`❌ Failed to perform action: ${err?.message || err}`);
+    } finally {
+      setActionBusy(false);
     }
   };
+
 
   const handleCloseDialog = () => {
     setActionDialogOpen(false);

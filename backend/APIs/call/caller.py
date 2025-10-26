@@ -49,6 +49,28 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from twilio.rest import Client
 from twilio.twiml.voice_response import Connect, VoiceResponse
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(title="Lawgorithm (Stable Realtime Bridge)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        # add your dev host(s) as needed, or use ["*"] during local dev:
+        # "*",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],     # allows POST, GET, OPTIONS, etc.
+    allow_headers=["*"],     # allows Content-Type, Authorization, etc.
+)
+
+
 # =========================
 # Load config
 # =========================
@@ -290,6 +312,18 @@ async def make_call_get(to: str = None, clientName: str = None):
     except Exception as e:
         return HTMLResponse(f"<h1>Error</h1><pre>{e}</pre>", status_code=500)
 
+from fastapi.responses import Response
+
+@app.options("/make-call")
+async def options_make_call(request: Request):
+    data = {}
+    try:
+        data = await request.json()
+    except:
+        pass
+    to = data.get("to")
+    client_name = data.get("clientName")
+    return await _initiate_call(to, client_name, is_browser=False)
 
 @app.post("/make-call")
 async def make_call_post(request: Request):

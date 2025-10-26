@@ -360,6 +360,21 @@ export async function createSampleTask(): Promise<{ task_id: string; status: str
   return ingestTask(randomTask);
 }
 
+export async function makeCall(to?: string) {
+  const res = await fetch('http://localhost:8000/make-call', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // If your FastAPI uses a default phone when "to" is missing, you can omit it.
+    body: JSON.stringify(to ? { to } : {}),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`makeCall failed (${res.status}): ${text || 'Unknown error'}`);
+  }
+  return res.json(); // { success, callSid, ... }
+}
+
+
 /**
  * Test API connection
  */
