@@ -103,7 +103,7 @@ class RAGEmbeddings:
         Generate embeddings for all documents.
         
         Args:
-            documents: List of document dicts. If None, loads from database.
+            documents: List of document dicts or DataFrame. If None, loads from database.
             batch_size: Number of documents to process at once
             show_progress: Show progress bar during encoding
         
@@ -113,6 +113,11 @@ class RAGEmbeddings:
         # Load documents if not provided
         if documents is None:
             documents = self.load_documents()
+        
+        # Convert DataFrame to list of dicts if needed
+        if hasattr(documents, 'to_dict'):
+            # It's a DataFrame
+            documents = documents.to_dict('records')
         
         self.documents = documents
         
