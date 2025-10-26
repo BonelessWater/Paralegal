@@ -7,11 +7,11 @@
 
 /**
  * API Service Layer
- * Connects React frontend to FastAPI backend (port 8081)
+ * Connects React frontend to FastAPI backend (port 9081 via SSH tunnel)
  */
 
-// Use environment variable or default to localhost
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081';
+// Use environment variable or default to localhost via SSH tunnel
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9081';
 
 // ============================================================================
 // TYPE DEFINITIONS (matching backend Pydantic models)
