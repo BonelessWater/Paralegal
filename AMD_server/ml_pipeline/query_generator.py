@@ -181,11 +181,13 @@ Generate {num_queries} distinct queries now:"""
     def _call_llm(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1500) -> str:
         """Call the Saul-7B LLM via vLLM API"""
         try:
+            # Combine system message into user prompt for Saul-7B compatibility
+            full_prompt = "You are a legal research expert AI that generates optimized search queries for legal databases.\n\n" + prompt
+            
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a legal research expert AI that generates optimized search queries for legal databases."},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": full_prompt}
                 ],
                 temperature=temperature,
                 max_tokens=max_tokens

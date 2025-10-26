@@ -16,7 +16,7 @@ import json
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from intelligent_scraper import LegalCase
-from rag_embeddings import RAGEmbeddingSystem
+from rag_embeddings import RAGEmbeddings
 from data_loader import load_legal_documents
 
 # Configure logging
@@ -40,7 +40,7 @@ class AutoIntegrationPipeline:
     6. Log integration metrics
     """
     
-    def __init__(self, rag_system: Optional[RAGEmbeddingSystem] = None):
+    def __init__(self, rag_system: Optional[RAGEmbeddings] = None):
         """
         Initialize the pipeline.
         
@@ -50,7 +50,7 @@ class AutoIntegrationPipeline:
         if rag_system:
             self.rag_system = rag_system
         else:
-            self.rag_system = RAGEmbeddingSystem()
+            self.rag_system = RAGEmbeddings()
         
         self.integration_log = []
         logger.info("Auto-Integration Pipeline initialized")

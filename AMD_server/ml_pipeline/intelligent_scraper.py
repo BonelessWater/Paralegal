@@ -617,6 +617,68 @@ class CourtListenerScraper:
         except Exception as e:
             logger.error(f"Error loading cases from JSON: {e}")
             return []
+    
+    async def _scrape_courtlistener_async(self, query: str, max_cases: int = 20) -> List[LegalCase]:
+        """
+        Async method to scrape CourtListener using API (for async orchestrator).
+        
+        Args:
+            query: Search query
+            max_cases: Maximum number of cases to retrieve
+            
+        Returns:
+            List of LegalCase objects
+        """
+        import aiohttp
+        
+        cases = []
+        api_token = self.config['courtlistener']['api_token']
+        
+        try:
+            headers = {}
+            if api_token:
+                headers['Authorization'] = f'Token {api_token}'
+            
+            async with aiohttp.ClientSession(headers=headers) as session:
+                url = f"{self.API_URL}/search/"
+                params = {
+                    'q': query,
+                    'type': 'o',  # opinions
+                    'order_by': 'score desc',
+                    'stat_Precedential': 'on'
+                }
+                
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        results = data.get('results', [])
+                        
+                        for result in results[:max_cases]:
+                            try:
+                                case = LegalCase(
+                                    case_name=result.get('caseName', 'Unknown'),
+                                    citation=result.get('citation', ['N/A'])[0] if result.get('citation') else 'N/A',
+                                    court=result.get('court', 'Unknown'),
+                                    date_filed=result.get('dateFiled', 'Unknown'),
+                                    snippet=result.get('snippet', '')[:500],
+                                    url=result.get('absolute_url', ''),
+                                    full_text=result.get('text', '')[:10000],
+                                    judge=result.get('panel', []),
+                                    docket_number=result.get('docketNumber', '')
+                                )
+                                cases.append(case)
+                            except Exception as e:
+                                logger.warning(f"Error parsing result: {e}")
+                                continue
+                        
+                        logger.info(f"Async scraped {len(cases)} cases for query: {query}")
+                    else:
+                        logger.error(f"API request failed with status {response.status}")
+                        
+        except Exception as e:
+            logger.error(f"Async scraping error: {e}")
+        
+        return cases
 
 
 def test_scraper():
