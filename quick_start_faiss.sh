@@ -36,10 +36,32 @@ echo -e "\n${YELLOW}Step 3: Pulling latest code...${NC}"
 git pull
 echo -e "${GREEN}✅ Code updated${NC}"
 
-# Step 4: Check Python environment
-echo -e "\n${YELLOW}Step 4: Checking Python environment...${NC}"
-python3 --version
-echo -e "${GREEN}✅ Python available${NC}"
+# Step 4: Activate virtual environment
+echo -e "\n${YELLOW}Step 4: Looking for virtual environment...${NC}"
+
+# Check common venv locations
+VENV_PATH=""
+if [ -d "venv" ]; then
+    VENV_PATH="venv"
+elif [ -d "../venv" ]; then
+    VENV_PATH="../venv"
+elif [ -d "/home/amd-knights/venv" ]; then
+    VENV_PATH="/home/amd-knights/venv"
+fi
+
+if [ -z "$VENV_PATH" ]; then
+    echo -e "${RED}❌ Virtual environment not found${NC}"
+    echo "Please specify the path to your venv:"
+    echo "  Example: source /path/to/venv/bin/activate"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ Found venv at: $VENV_PATH${NC}"
+source "$VENV_PATH/bin/activate"
+
+echo -e "${YELLOW}Activated virtual environment${NC}"
+python --version
+echo -e "${GREEN}✅ Python environment ready${NC}"
 
 # Step 5: Install dependencies
 echo -e "\n${YELLOW}Step 5: Installing required packages...${NC}"
@@ -49,7 +71,7 @@ echo "This may take 2-3 minutes..."
 pip install -q sentence-transformers faiss-cpu psycopg2-binary
 
 # Check if PyTorch with ROCm is installed
-if python3 -c "import torch; exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; then
+if python -c "import torch; exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; then
     echo -e "${GREEN}✅ PyTorch with ROCm already installed${NC}"
 else
     echo -e "${YELLOW}⚠️  Installing PyTorch with ROCm (this takes ~2 minutes)...${NC}"
@@ -60,7 +82,7 @@ echo -e "${GREEN}✅ All dependencies installed${NC}"
 
 # Step 6: Verify GPU access
 echo -e "\n${YELLOW}Step 6: Verifying GPU access from Python...${NC}"
-python3 << 'EOF'
+python << 'EOF'
 import torch
 print(f"  CUDA available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
@@ -73,7 +95,7 @@ echo -e "${GREEN}✅ GPU verification complete${NC}"
 
 # Step 7: Check database connection
 echo -e "\n${YELLOW}Step 7: Checking PostgreSQL connection...${NC}"
-python3 << 'EOF'
+python << 'EOF'
 import psycopg2
 
 try:
@@ -112,7 +134,7 @@ read -p "Press Enter to continue..."
 cd AMD_server/ml_pipeline
 
 # Run the embeddings script
-python3 rag_embeddings.py
+python rag_embeddings.py
 
 echo -e "\n${GREEN}✅ FAISS embeddings test complete!${NC}"
 
