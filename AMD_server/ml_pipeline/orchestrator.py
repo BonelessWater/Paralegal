@@ -23,6 +23,10 @@ from datetime import datetime
 import json
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file to get COURTLISTENER_API_TOKEN
+
 # Add parent directory for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -263,7 +267,7 @@ class ScrapingOrchestrator:
             )
         
         # Use API with async requests
-        url = "https://www.courtlistener.com/api/rest/v3/search/"
+        url = "https://www.courtlistener.com/api/rest/v4/search/"
         params = {
             'q': query,
             'type': 'o',  # Opinions
