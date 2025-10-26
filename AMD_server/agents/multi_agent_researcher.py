@@ -981,7 +981,7 @@ INSTRUCTIONS:
 
 OUTPUT THE COMPLETE MEMO NOW (all sections, all text):"""
 
-        response = await self._ask_llm(prompt, max_tokens=2500, temperature=0.3)
+        response = await self._ask_llm(prompt, max_tokens=3000, temperature=0.3, timeout=60)  # Increased timeout and tokens for quality check
         return response.strip()
     
     # ========================================================================
