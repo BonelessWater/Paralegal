@@ -16,7 +16,9 @@ from pathlib import Path
 
 # Load environment variables
 from dotenv import load_dotenv
-load_dotenv()  # Load .env file to get COURTLISTENER_API_TOKEN
+# Load from backend/.env explicitly
+env_path = Path(__file__).parent.parent.parent / 'backend' / '.env'
+load_dotenv(dotenv_path=env_path)  # Load .env file to get COURTLISTENER_API_TOKEN
 
 import requests
 from requests.adapters import HTTPAdapter
