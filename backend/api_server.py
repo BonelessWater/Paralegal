@@ -201,15 +201,7 @@ async def startup_event():
             'current_task': None
         }
         
-        agents_db['legal_researcher'] = {
-            'instance': LegalResearcherAgent(llm_client),
-            'name': 'Legal Researcher',
-            'tasks_processed': 0,
-            'total_time': 0.0,
-            'failures': 0,
-            'status': 'idle',
-            'current_task': None
-        }
+        # NOTE: legal_researcher initialized later with intelligent scraper integrated
         
         agents_db['evidence_sorter'] = {
             'instance': EvidenceSorterAgent(llm_client),
@@ -221,7 +213,10 @@ async def startup_event():
             'current_task': None
         }
         
-        logger.info(f"✅ Initialized {len(agents_db)} specialist agents")
+        # NOTE: Legal researcher will be initialized after intelligent scraper
+        # so we can pass the scraper instance to it
+        
+        logger.info(f"✅ Initialized {len(agents_db) - 1} specialist agents (legal researcher pending)")
     except Exception as e:
         logger.error(f"❌ Failed to initialize agents: {e}")
     
@@ -237,7 +232,25 @@ async def startup_event():
         logger.error(f"❌ Failed to initialize intelligent scraper: {e}")
         intelligent_scraper = None
     
-    logger.info("🎉 Server startup complete!")
+    # 4. Now initialize Legal Researcher with Intelligent Scraper integrated
+    try:
+        agents_db['legal_researcher'] = {
+            'instance': LegalResearcherAgent(
+                llm_client,
+                intelligent_scraper=intelligent_scraper  # INTEGRATED!
+            ),
+            'name': 'Legal Researcher',
+            'tasks_processed': 0,
+            'total_time': 0.0,
+            'failures': 0,
+            'status': 'idle',
+            'current_task': None
+        }
+        logger.info("✅ Legal researcher agent initialized with integrated intelligent scraper")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize legal researcher: {e}")
+    
+    logger.info(f"🎉 Server startup complete! {len(agents_db)} agents ready")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -306,36 +319,19 @@ async def process_task_background(task_id: str):
         agent_data['status'] = 'processing'
         agent_data['current_task'] = task_id
         
-        # Process with agent
+        # Process with agent (agent handles its own intelligent tools)
         start_time = datetime.now()
         
-        # SPECIAL CASE: Legal Researcher uses Intelligent Scraper!
-        if agent_id == 'legal_researcher' and intelligent_scraper:
-            logger.info(f"🚀 Using intelligent scraper for legal research...")
-            
-            # Run intelligent research
-            research_result = await intelligent_scraper.research_question_async(task.content)
-            
-            # Format response
-            total_cases = research_result.get('total_cases_found', 0)
-            ai_response = f"""Based on research across {total_cases} legal cases:
-
-{research_result.get('summary', 'Research completed successfully.')}
-
-Cases Found: {total_cases}
-Scraping Speed: {research_result.get('cases_per_second', 0):.1f} cases/sec
-Sources: CourtListener (10.6M opinions)
-
-This research was powered by our intelligent scraping system with 100 concurrent workers!"""
-            
-            # Update performance metrics
-            performance_metrics['cases_scraped'] += total_cases
+        # Call agent's process method
+        result = await agent_instance.process_async(task.content) if hasattr(agent_instance, 'process_async') else agent_instance.process(task.content)
+        
+        # Extract response from result
+        ai_response = result.get('response', result.get('output', result.get('analysis', 'Processing completed')))
+        
+        # For legal researcher, update scraper metrics if available
+        if agent_id == 'legal_researcher' and 'total_cases_found' in result:
+            performance_metrics['cases_scraped'] += result.get('total_cases_found', 0)
             performance_metrics['scraping_sessions'] += 1
-            
-        else:
-            # Regular agent processing
-            result = agent_instance.process(task.content)
-            ai_response = result.get('response', result.get('output', 'Processing completed'))
         
         # Calculate processing time
         processing_time = (datetime.now() - start_time).total_seconds()
@@ -360,7 +356,9 @@ This research was powered by our intelligent scraping system with 100 concurrent
         logger.info(f"✅ Task {task_id} processed in {processing_time:.2f}s")
         
     except Exception as e:
+        import traceback
         logger.error(f"❌ Task processing failed: {e}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
         task = tasks_db.get(task_id)
         if task:
             task.status = 'failed'
