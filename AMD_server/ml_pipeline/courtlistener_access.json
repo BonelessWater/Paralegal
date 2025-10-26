@@ -1,0 +1,17 @@
+{
+  "timestamp": "2025-10-26T05:13:26.898595",
+  "results": {
+    "Search Opinions": {
+      "status": 200,
+      "accessible": true
+    },
+    "Courts": {
+      "status": 200,
+      "accessible": true
+    },
+    "Opinions": {
+      "status": 200,
+      "accessible": true
+    }
+  }
+}

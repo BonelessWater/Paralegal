@@ -7,7 +7,7 @@ Tests all agents, orchestrator modes, and workflows
 import asyncio
 import json
 from datetime import datetime
-from researcher import (
+from Paralegal.AMD_server.ADK.research_adk import (
     ParalegalOrchestrator,
     ResearchTask,
     SaulConfig,
