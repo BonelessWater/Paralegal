@@ -18,6 +18,9 @@ import {
   DialogContent,
   DialogActions,
   Paper,
+  Stepper,
+  Step,
+  StepLabel,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -54,7 +57,9 @@ const LegalResearcher: React.FC = () => {
   const [researchProgress, setResearchProgress] = useState<{
     stage: 'idle' | 'pending' | 'processing' | 'awaiting_approval' | 'completed' | 'failed';
     message: string;
+    synthesisStage?: number; // 1-4 for multi-stage synthesis tracking
   }>({ stage: 'idle', message: '' });
+  const [researchStartTime, setResearchStartTime] = useState<number | null>(null);
   
   // Results state
   const [cases, setCases] = useState<CaseData[]>([]);
@@ -70,7 +75,7 @@ const LegalResearcher: React.FC = () => {
     "Product liability cases involving defective medical devices",
   ];
 
-  // Poll task status
+  // Poll task status and estimate synthesis stage
   useEffect(() => {
     if (!currentTask?.id || currentTask.status === 'approved' || currentTask.status === 'failed') {
       return;
@@ -81,10 +86,30 @@ const LegalResearcher: React.FC = () => {
         const updatedTask = await getTask(currentTask.id);
         setCurrentTask(updatedTask);
         
+        // Estimate synthesis stage based on processing time and status
+        let synthesisStage: number | undefined;
+        if (updatedTask.status === 'processing' && researchStartTime) {
+          const elapsedSeconds = (Date.now() - researchStartTime) / 1000;
+          
+          // Typical timing: 0-15s = scraping, 15-30s = Stage 1&2, 30-60s = Stage 3, 60-90s = Stage 4
+          if (elapsedSeconds < 15) {
+            synthesisStage = undefined; // Still scraping
+          } else if (elapsedSeconds < 30) {
+            synthesisStage = 1; // Stage 1: Organizing findings
+          } else if (elapsedSeconds < 45) {
+            synthesisStage = 2; // Stage 2: Writing sections
+          } else if (elapsedSeconds < 75) {
+            synthesisStage = 3; // Stage 3: Integration
+          } else {
+            synthesisStage = 4; // Stage 4: Quality check
+          }
+        }
+        
         // Update progress
         setResearchProgress({
           stage: updatedTask.status as any,
-          message: getProgressMessage(updatedTask.status, updatedTask.assigned_agent || 'agent'),
+          message: getProgressMessage(updatedTask.status, updatedTask.assigned_agent || 'agent', synthesisStage),
+          synthesisStage,
         });
 
         // If completed or awaiting approval, extract results
@@ -110,13 +135,23 @@ const LegalResearcher: React.FC = () => {
     }, 2000); // Poll every 2 seconds
 
     return () => clearInterval(pollInterval);
-  }, [currentTask?.id, currentTask?.status]);
+  }, [currentTask?.id, currentTask?.status, researchStartTime]);
 
-  const getProgressMessage = (status: string, agent: string) => {
+  const getProgressMessage = (status: string, agent: string, synthesisStage?: number) => {
+    const stageMessages = {
+      1: '📋 Stage 1: Organizing findings by topic...',
+      2: '✍️ Stage 2: Writing memo sections in parallel...',
+      3: '🔗 Stage 3: Integrating sections into cohesive memo...',
+      4: '✅ Stage 4: Quality checking and finalizing...',
+    };
+    
     switch (status) {
       case 'pending':
         return 'Initializing research request...';
       case 'processing':
+        if (synthesisStage && stageMessages[synthesisStage as keyof typeof stageMessages]) {
+          return `🔍 ${agent} researching... ${stageMessages[synthesisStage as keyof typeof stageMessages]}`;
+        }
         return `🔍 ${agent} is researching... Scraping case law and analyzing precedents`;
       case 'awaiting_approval':
         return '✅ Research complete! Review the memo below';
@@ -134,6 +169,7 @@ const LegalResearcher: React.FC = () => {
     if (!question.trim()) return;
 
     setIsResearching(true);
+    setResearchStartTime(Date.now()); // Track start time for synthesis progress
     setResearchProgress({ stage: 'pending', message: 'Submitting research request...' });
     setCases([]);
     setResearchMemo('');
@@ -187,6 +223,7 @@ const LegalResearcher: React.FC = () => {
     setCurrentTask(null);
     setResearchProgress({ stage: 'idle', message: '' });
     setIsResearching(false);
+    setResearchStartTime(null);
     setCases([]);
     setResearchMemo('');
   };
@@ -201,6 +238,7 @@ const LegalResearcher: React.FC = () => {
     setCurrentTask(null);
     setResearchProgress({ stage: 'idle', message: '' });
     setIsResearching(false);
+    setResearchStartTime(null);
     setCases([]);
     setResearchMemo('');
   };
@@ -311,6 +349,29 @@ const LegalResearcher: React.FC = () => {
             </Box>
             
             {isResearching && <LinearProgress sx={{ mb: 2 }} />}
+            
+            {/* Multi-Stage Synthesis Progress Stepper */}
+            {researchProgress.synthesisStage && (
+              <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: 'primary.main' }}>
+                  🔬 Multi-Stage Synthesis Pipeline
+                </Typography>
+                <Stepper activeStep={researchProgress.synthesisStage - 1} alternativeLabel>
+                  <Step>
+                    <StepLabel>Organize Findings</StepLabel>
+                  </Step>
+                  <Step>
+                    <StepLabel>Write Sections</StepLabel>
+                  </Step>
+                  <Step>
+                    <StepLabel>Integration</StepLabel>
+                  </Step>
+                  <Step>
+                    <StepLabel>Quality Check</StepLabel>
+                  </Step>
+                </Stepper>
+              </Box>
+            )}
             
             {currentTask && (
               <Stack direction="row" spacing={2}>
