@@ -100,6 +100,7 @@ Guidelines:
         
         research_data = {}
         scraper_summary = ""
+        case_citations = ""
         
         # Step 1: Use intelligent scraper for live case research if available
         if self.intelligent_scraper:
@@ -110,6 +111,7 @@ Guidelines:
                 total_cases = research_result.get('total_cases_found', 0)
                 cases_per_sec = research_result.get('cases_per_second', 0)
                 duration = research_result.get('duration_seconds', 0)
+                cases_data = research_result.get('cases', [])
                 
                 research_data['scraper_results'] = research_result
                 research_data['total_cases_found'] = total_cases
@@ -126,6 +128,19 @@ Generated Queries ({len(research_result.get('queries', []))})"""
                 
                 for i, q in enumerate(research_result.get('queries', [])[:3], 1):
                     scraper_summary += f"\n{i}. {q.get('query', 'N/A')}"
+                
+                # Format case citations for LLM context
+                if cases_data:
+                    case_citations = f"\n\nRELEVANT CASES FOUND ({len(cases_data)} cases):\n"
+                    for i, case in enumerate(cases_data, 1):
+                        case_citations += f"\n{i}. {case.get('case_name', 'Unknown')}"
+                        case_citations += f"\n   Citation: {case.get('citation', 'No citation')}"
+                        case_citations += f"\n   Court: {case.get('court', 'Unknown Court')}"
+                        case_citations += f"\n   Date: {case.get('date_filed', 'Unknown')}"
+                        case_citations += f"\n   Summary: {case.get('snippet', 'No summary available')[:200]}..."
+                        case_citations += f"\n"
+                    
+                    research_data['case_citations'] = cases_data
                 
                 logger.info(f"✅ Intelligent scraper found {total_cases} cases")
                 
@@ -162,16 +177,20 @@ Generated Queries ({len(research_result.get('queries', []))})"""
 {question}
 
 {scraper_summary}
+{case_citations}
 {rag_summary}
 
 Please provide a comprehensive legal research memo that includes:
 1. Summary of Research Findings
 2. Relevant Legal Principles & Precedents
-3. Key Factors Affecting This Case Type
-4. Settlement Range Considerations (if applicable)
-5. Recommended Next Steps
+3. Case Analysis - CITE SPECIFIC CASES from the research above using proper format:
+   Example: "In Smith v. Jones, 123 F.3d 456 (9th Cir. 2020), the court held..."
+4. Key Factors Affecting This Case Type
+5. Settlement Range Considerations (if applicable)
+6. Recommended Next Steps
 
-Be specific, cite the research data provided, and give practical guidance."""
+IMPORTANT: When citing cases, use the exact case names and citations provided in the research results above.
+Be specific, reference actual cases found, and give practical guidance."""
 
             # Use chat_completion method from LLM client
             messages = [
@@ -182,7 +201,7 @@ Be specific, cite the research data provided, and give practical guidance."""
             analysis = self.llm.chat_completion(
                 messages=messages,
                 temperature=0.6,
-                max_tokens=800
+                max_tokens=1000  # Increased for detailed citations
             )
             
             research_data['analysis'] = analysis.strip()

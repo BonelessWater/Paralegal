@@ -164,11 +164,15 @@ class ScrapingOrchestrator:
         # Calculate stats
         duration = (datetime.now() - start_time).total_seconds()
         
+        # Select top cases for citation (prioritize by relevance/date)
+        top_cases_for_citation = all_cases[:10]  # Top 10 most relevant
+        
         results = {
             'user_question': user_question,
             'num_queries': len(queries),
             'queries': [q.to_dict() for q in queries],
             'total_cases_found': len(all_cases),
+            'cases': [case.to_dict() for case in top_cases_for_citation],  # ADDED: Actual case data for citations
             'cases_by_source': self._count_by_source(all_cases),
             'integration_stats': integration_stats,
             'duration_seconds': duration,
