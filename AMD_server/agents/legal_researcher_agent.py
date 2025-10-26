@@ -108,6 +108,9 @@ Guidelines:
                 logger.info("🚀 Running intelligent scraper for live case research...")
                 research_result = await self.intelligent_scraper.research_question_async(question)
                 
+                logger.info(f"DEBUG: research_result type = {type(research_result)}")
+                logger.info(f"DEBUG: research_result = {research_result if isinstance(research_result, dict) else f'<{type(research_result).__name__} with {len(research_result) if hasattr(research_result, '__len__') else 0} items>'}")
+                
                 # Handle case where scraper returns unexpected format
                 if not isinstance(research_result, dict):
                     logger.error(f"Intelligent scraper returned unexpected type: {type(research_result)}")
@@ -150,7 +153,9 @@ Generated Queries ({len(research_result.get('queries', []))})"""
                 logger.info(f"✅ Intelligent scraper found {total_cases} cases")
                 
             except Exception as e:
+                import traceback
                 logger.error(f"Intelligent scraper error: {e}")
+                logger.error(f"Full traceback:\n{traceback.format_exc()}")
                 scraper_summary = "\n(Live case research encountered an error)\n"
         
         # Step 2: Use RAG for similar cases from local database (if available)
