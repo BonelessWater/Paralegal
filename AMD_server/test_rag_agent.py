@@ -7,13 +7,19 @@ Tests the integration without running full test suite
 import sys
 import os
 
-# Add paths
+# Add AMD_server directory and parent for backend access
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-from backend.APIs.AMD.llm_client import AMDLLMClient
-from agents.legal_researcher_agent import LegalResearcherAgent
-from config.amd_config import AMDConfig
+try:
+    from backend.APIs.AMD.llm_client import AMDLLMClient
+    from agents.legal_researcher_agent import LegalResearcherAgent
+    from config.amd_config import AMDConfig
+except ImportError as e:
+    print(f"❌ Import Error: {e}")
+    print("\nThis script must be run from the AMD server where backend modules are available.")
+    print("Expected location: ~/Paralegal/AMD_server/")
+    sys.exit(1)
 
 def print_section(title):
     """Print a formatted section header"""
