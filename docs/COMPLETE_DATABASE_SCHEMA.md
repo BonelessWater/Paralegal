@@ -9,23 +9,101 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Schema: legal_data](#schema-legal_data)
-3. [Schema: client_comms](#schema-client_comms)
-4. [Schema: datasets](#schema-datasets)
-5. [Setup Instructions](#setup-instructions)
-6. [Common Queries](#common-queries)
+2. [Schema: case_management](#schema-case_management) ⭐ NEW
+3. [Schema: legal_data](#schema-legal_data)
+4. [Schema: client_comms](#schema-client_comms)
+5. [Schema: datasets](#schema-datasets)
+6. [Setup Instructions](#setup-instructions)
+7. [Common Queries](#common-queries)
 
 ---
 
 ## Overview
 
-The Paralegal AI database uses **three main schemas**:
+The Paralegal AI database uses **four main schemas**:
 
 | Schema | Purpose | Tables |
 |--------|---------|--------|
+| `case_management` ⭐ | **Clients, cases, injuries, insurance, tasks** | **14 tables** |
 | `legal_data` | Legal research documents, cases, compliance | 7 tables |
 | `client_comms` | Client communications (calls, SMS, emails) | 10 tables |
 | `datasets` | Kaggle dataset metadata | 2 tables |
+
+---
+
+## Schema: case_management ⭐ NEW
+
+**Purpose**: Core business entities - clients, cases, injuries, medical records, insurance, tasks, and notes.
+
+### Key Tables
+
+#### 1. `clients`
+Client personal information and contact details.
+
+**Key Columns**:
+- `client_id` (VARCHAR UNIQUE) - External client ID
+- `first_name`, `last_name`, `middle_name`
+- `email`, `phone_primary`, `phone_secondary`, `phone_mobile`
+- `address_*` - Full address fields
+- `date_of_birth`, `ssn_encrypted`
+- `client_status` ('active', 'inactive', 'potential', 'former')
+- `client_source` ('referral', 'advertisement', 'website')
+- `intake_date`, `preferred_language`, `preferred_contact_method`
+
+#### 2. `cases` ⭐ CORE TABLE
+Legal cases with complete details.
+
+**Key Columns**:
+- `case_id` (VARCHAR UNIQUE) - Case number
+- `client_id` → References `clients(client_id)`
+- `case_name`, `case_type`, `case_subtype`, `case_status`
+- **Dates**: `incident_date`, `filing_date`, `case_opened_date`, `settlement_date`, `trial_date`
+- **Parties**: `opposing_party_name`, `opposing_counsel_name`
+- **Financial**: `damages_claimed`, `settlement_amount`, `attorney_fees`, `contingency_percentage`
+- **Assignments**: `primary_attorney`, `assigned_paralegal`, `case_manager`
+- **Details**: `incident_description`, `injuries_description`, `liability_assessment`, `settlement_recommendation`
+- **Workflow**: `case_phase`, `next_action`, `next_deadline`
+
+#### 3. `injuries`
+Injuries sustained by clients.
+
+**Columns**: injury_type, injury_location, injury_severity, icd10_code, requires_surgery, permanent_disability, etc.
+
+#### 4. `medical_providers`
+Medical treatment providers and records.
+
+**Columns**: provider_type, provider_name, total_visits, total_billed, records_requested, records_received, etc.
+
+#### 5. `insurance_claims`
+Insurance claims related to cases.
+
+**Columns**: claim_number, insurance_company_name, policy_number, claim_amount, settlement_offer, policy_limits, etc.
+
+#### 6. `case_events`
+Timeline of case events.
+
+**Columns**: event_type, event_date, event_description, attendees, event_status, is_deadline, etc.
+
+#### 7. `case_tasks`
+Tasks and deadlines for case management.
+
+**Columns**: task_name, assigned_to, due_date, task_status, priority, is_critical_deadline, etc.
+
+#### 8. `case_notes`
+Notes and journal entries.
+
+**Columns**: note_type, note_content, author, is_confidential, is_privileged, etc.
+
+#### 9. `attorneys`
+Law firm attorneys and staff.
+
+**Columns**: attorney_id, bar_number, role, department, practice_areas, employment_status, etc.
+
+### Views
+
+- `active_cases_summary` - Active cases with client info
+- `case_financials` - Financial summary per case
+- `attorney_workload` - Case count and workload per attorney
 
 ---
 
@@ -300,10 +378,13 @@ Individual files within datasets.
 # On AMD server
 cd /home/amd-knights/Paralegal/AMD_server/scraper
 
-# Create legal_data schema
+# Create case_management schema (clients, cases, tasks)
+psql -h localhost -U paralegal_user -d paralegal_db -f case_management_schema.sql
+
+# Create legal_data schema (documents, law firms)
 psql -h localhost -U paralegal_user -d paralegal_db -f database_schema.sql
 
-# Create client_comms schema
+# Create client_comms schema (calls, SMS, emails)
 psql -h localhost -U paralegal_user -d paralegal_db -f client_communications_schema.sql
 ```
 
@@ -314,6 +395,7 @@ python3 ../ml_pipeline/inspect_database.py
 ```
 
 Should show:
+- `case_management` schema with 14 tables ⭐ NEW
 - `legal_data` schema with 7 tables
 - `client_comms` schema with 10 tables
 - `datasets` schema with 2 tables
