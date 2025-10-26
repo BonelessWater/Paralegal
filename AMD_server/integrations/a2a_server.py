@@ -8,7 +8,13 @@ from .adk_agent_wrapper import get_all_adk_agents
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from config.amd_config import AMDConfig
+try:
+    from config.amd_config import AMDConfig
+except ImportError:
+    class AMDConfig:
+        VLLM_BASE_URL = "http://localhost:8000"
+        MODEL_FOLDER = "saul-7b-instruct-v1"
+        MODEL_NAME = "Saul-7B-Instruct-v1"
 import logging
 import traceback
 

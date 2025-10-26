@@ -1,6 +1,6 @@
 """
 Google ADK LLM Wrapper for AMD vLLM Server
-Works with actual project structure
+Connects Saul-7B on AMD server to Google ADK framework
 """
 
 from google.adk import LlmModel
@@ -10,24 +10,20 @@ import json
 import sys
 import os
 
-# Add project root and backend to path
-current_dir = os.path.dirname(__file__)
-project_root = os.path.join(current_dir, '..', '..')
-backend_path = os.path.join(project_root, 'backend')
-sys.path.extend([project_root, backend_path])
-
+# Add config path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 try:
     from config.amd_config import AMDConfig
 except ImportError:
-    # Fallback configuration if config doesn't exist
     class AMDConfig:
         VLLM_BASE_URL = "http://localhost:8000"
         MODEL_FOLDER = "saul-7b-instruct-v1"
         MODEL_NAME = "Saul-7B-Instruct-v1"
 
-
 class SaulLlmModel(LlmModel):
-    """Custom LLM Model for Saul-7B on AMD vLLM server"""
+    """
+    Custom LLM Model implementation for Saul-7B on AMD vLLM server
+    """
     
     def __init__(
         self,
@@ -52,7 +48,7 @@ class SaulLlmModel(LlmModel):
         max_tokens: int = 1024,
         **kwargs
     ) -> str:
-        """Generate text using Saul-7B"""
+        """Generate text using Saul-7B on AMD vLLM server"""
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -110,20 +106,10 @@ class SaulLlmModel(LlmModel):
 
 def get_saul_model(config_from_env: bool = True) -> SaulLlmModel:
     """Get configured Saul-7B model for ADK"""
-    return SaulLlmModel()
-
-
-# Test function
-def test_saul_model():
-    """Test the Saul model connection"""
-    try:
-        model = get_saul_model()
-        print(f"✅ Saul model initialized: {model.base_url}")
-        return True
-    except Exception as e:
-        print(f"❌ Saul model initialization failed: {e}")
-        return False
-
-
-if __name__ == "__main__":
-    test_saul_model()
+    if config_from_env:
+        return SaulLlmModel(
+            base_url=AMDConfig.VLLM_BASE_URL,
+            model=AMDConfig.MODEL_FOLDER
+        )
+    else:
+        return SaulLlmModel()

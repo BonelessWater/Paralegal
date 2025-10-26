@@ -12,8 +12,13 @@ current_dir = os.path.dirname(__file__)
 project_root = os.path.join(current_dir, '..', '..', '..')
 sys.path.append(project_root)
 
-from config.amd_config import AMDConfig
-
+try:
+    from config.amd_config import AMDConfig
+except ImportError:
+    class AMDConfig:
+        VLLM_BASE_URL = "http://localhost:8000"
+        MODEL_FOLDER = "saul-7b-instruct-v1"
+        MODEL_NAME = "Saul-7B-Instruct-v1"
 
 def main():
     """Test the unified integration stack"""

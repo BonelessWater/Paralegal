@@ -1,25 +1,55 @@
 """
 Google ADK Agent Wrappers for Paralegal Specialist Agents
-Uses the working agents from AMD_server/ADK/agents/
+Wraps existing agents as ADK LlmAgents
 """
 
 from google.adk import LlmAgent, SequentialAgent, ParallelAgent
 from .adk_llm_wrapper import get_saul_model
-# Import the WORKING agents from AMD_server/ADK/agents/
+# Use AMD_server paths since we're in AMD_server/integrations/
 from ..ADK.agents.client_communication_agent import ClientCommunicationAgent
 from ..ADK.agents.records_wrangler_agent import RecordsWranglerAgent
-from ..ADK.agents.legal_researcher_agent import LegalResearcherAgent  
+from ..ADK.agents.legal_researcher_agent import LegalResearcherAgent
 from ..ADK.agents.evidence_sorter_agent import EvidenceSorterAgent
-# Import LLM client from backend
-import sys
+# Import from backend since the LLM client is there
 import os
+import sys
+import logging
+from typing import Dict, Any
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from backend.APIs.AMD.llm_client import AMDLLMClient
-from config.amd_config import AMDConfig
 from typing import Dict, Any
 import logging
 
+try:
+    from config.amd_config import AMDConfig
+except Exception:
+    class AMDConfig:
+        VLLM_BASE_URL = "http://localhost:8000"
+        MODEL_FOLDER = "saul-7b-instruct-v1"
+        MODEL_NAME = "Saul-7B-Instruct-v1"
+        A2A_SERVER_URL = "http://localhost:9000"
+        A2A_SERVER_HOST = "0.0.0.0"
+        A2A_SERVER_PORT = 9000
+        # optional agent -> model override mapping
+        AGENT_MODEL_MAP = {}
+
+try:
+    from APIs.AMD.llm_client import AMDLLMClient
+    LLM_CLIENT_AVAILABLE = True
+except Exception:
+    LLM_CLIENT_AVAILABLE = False
+    class AMDLLMClient:
+        """Fallback client that wraps get_saul_model().generate_text"""
+        def __init__(self, base_url: str, model: str):
+            self.model = get_saul_model()
+            # agent code expects a generate/response style interface; provide method name used by agents
+        def generate_response(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1024) -> str:
+            return self.model.generate_text(prompt, temperature=temperature, max_tokens=max_tokens)
+
+
+
 logger = logging.getLogger(__name__)
+
 
     
 class ClientCommunicationAdkAgent(LlmAgent):
@@ -35,7 +65,7 @@ Transform messy client messages into professional, empathetic responses.
 Keep responses under 200 words and provide clear next steps."""
         )
         
-        # Use the WORKING agent from AMD_server/ADK/agents/
+        # Keep reference to original agent for complex operations
         self.original_agent = ClientCommunicationAgent(
             AMDLLMClient(AMDConfig.VLLM_BASE_URL, AMDConfig.MODEL_FOLDER)
         )
@@ -113,10 +143,13 @@ Use consistent categorization with temperature 0.3 for predictable results.""",
         return self.original_agent.process(input_data)
 
 
-# Workflow Agents using Google ADK orchestration
+# Workflow Agents
 
 class ParalegalWorkflowAgent(SequentialAgent):
-    """Sequential workflow using Google ADK"""
+    """
+    Sequential workflow agent for complete case intake
+    Uses Google ADK's SequentialAgent for orchestration
+    """
     
     def __init__(self):
         agents = [
@@ -135,9 +168,13 @@ class ParalegalWorkflowAgent(SequentialAgent):
 
 
 class ParalegalParallelWorkflowAgent(ParallelAgent):
-    """Parallel workflow using Google ADK"""
+    """
+    Parallel workflow agent for faster processing
+    Research and records requests can run simultaneously
+    """
     
     def __init__(self):
+        # Research and records don't depend on each other
         parallel_agents = [
             LegalResearcherAdkAgent(),
             RecordsWranglerAdkAgent()
@@ -151,6 +188,7 @@ class ParalegalParallelWorkflowAgent(ParallelAgent):
         logger.info("Initialized ParalegalParallelWorkflowAgent for parallel execution")
 
 
+# Convenience function
 def get_all_adk_agents():
     """Get all ADK-wrapped paralegal agents"""
     return {
@@ -159,5 +197,5 @@ def get_all_adk_agents():
         "legal-researcher": LegalResearcherAdkAgent(),
         "evidence-sorter": EvidenceSorterAdkAgent(),
         "workflow-sequential": ParalegalWorkflowAgent(),
-        "workflow-parallel": ParallelWorkflowAgent()
+        "workflow-parallel": ParalegalParallelWorkflowAgent()
     }
