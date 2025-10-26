@@ -25,11 +25,11 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 
 # Load environment variables
 from dotenv import load_dotenv
-# Load from backend/.env explicitly (go up 2 levels from ml_pipeline to AMD_server, then up to root, then into backend)
-env_path = Path(__file__).parent.parent.parent / 'backend' / '.env'
-load_dotenv(dotenv_path=env_path)  # Load .env file to get COURTLISTENER_API_TOKEN
-logger_temp = logging.getLogger(__name__)
-logger_temp.info(f"Loading .env from: {env_path} (exists: {env_path.exists()})")
+# Load from project root .env ONLY (we deleted the duplicates)
+env_path = Path(__file__).parent.parent.parent / '.env'
+load_dotenv(dotenv_path=env_path, override=True)  # override=True forces reload
+print(f"[ORCHESTRATOR] Loading .env from: {env_path} (exists: {env_path.exists()})")
+print(f"[ORCHESTRATOR] Token loaded: {bool(os.getenv('COURTLISTENER_API_TOKEN'))} (length: {len(os.getenv('COURTLISTENER_API_TOKEN', ''))})")
 
 # Add parent directory for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
