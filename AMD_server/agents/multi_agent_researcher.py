@@ -747,9 +747,12 @@ Use proper legal citations and quote from the agent findings."""
                 logger.warning(f"⚠️  Prompt very large: {prompt_length} chars, truncating...")
                 prompt = prompt[:12000]
             
+            # Saul-7B requires alternating user/assistant roles - no system messages
+            # Prepend system instruction to the user prompt instead
+            full_prompt = "You are a specialized legal research assistant.\n\n" + prompt
+            
             messages = [
-                {"role": "system", "content": "You are a specialized legal research assistant."},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": full_prompt}
             ]
             
             response = self.llm.chat_completion(

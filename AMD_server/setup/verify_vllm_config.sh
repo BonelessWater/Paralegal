@@ -61,8 +61,7 @@ RESPONSE=$(curl -s -X POST http://localhost:8000/v1/chat/completions \
     -d '{
         "model": "Equall/Saul-7B-Instruct-v1",
         "messages": [
-            {"role": "system", "content": "You are a legal assistant."},
-            {"role": "user", "content": "What is the rule of law? Answer in one sentence."}
+            {"role": "user", "content": "You are a legal assistant. What is the rule of law? Answer in one sentence."}
         ],
         "max_tokens": 50,
         "temperature": 0.5
