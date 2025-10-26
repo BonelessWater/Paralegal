@@ -29,6 +29,8 @@ except Exception as e:
 # Test 2: Initialize Whisper
 print("\nTEST 2: Loading Whisper model...")
 try:
+    # Add parent directory to path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
     from audio.whisper_local import WhisperLocalTranscriber
     transcriber = WhisperLocalTranscriber(model_size="large-v3")
     print("✓ Model loaded")
