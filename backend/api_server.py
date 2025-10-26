@@ -317,18 +317,19 @@ async def process_task_background(task_id: str):
             research_result = await intelligent_scraper.research_question_async(task.content)
             
             # Format response
-            ai_response = f"""Based on research across {research_result['total_cases_scraped']} legal cases:
+            total_cases = research_result.get('total_cases_found', 0)
+            ai_response = f"""Based on research across {total_cases} legal cases:
 
 {research_result.get('summary', 'Research completed successfully.')}
 
-Cases Found: {research_result['total_cases_scraped']}
-Scraping Speed: {research_result.get('scraping_speed', 0):.1f} cases/sec
+Cases Found: {total_cases}
+Scraping Speed: {research_result.get('cases_per_second', 0):.1f} cases/sec
 Sources: CourtListener (10.6M opinions)
 
 This research was powered by our intelligent scraping system with 100 concurrent workers!"""
             
             # Update performance metrics
-            performance_metrics['cases_scraped'] += research_result['total_cases_scraped']
+            performance_metrics['cases_scraped'] += total_cases
             performance_metrics['scraping_sessions'] += 1
             
         else:
