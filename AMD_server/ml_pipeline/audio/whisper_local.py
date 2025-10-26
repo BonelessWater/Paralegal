@@ -26,6 +26,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 import warnings
 
+# Set PyTorch memory optimization for ROCm
+os.environ['PYTORCH_HIP_ALLOC_CONF'] = 'expandable_segments:True'
+
 # Suppress warnings
 warnings.filterwarnings('ignore')
 

@@ -22,6 +22,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 import warnings
 
+# Set PyTorch memory optimization for ROCm
+os.environ['PYTORCH_HIP_ALLOC_CONF'] = 'expandable_segments:True'
+
 warnings.filterwarnings('ignore')
 
 

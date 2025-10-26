@@ -7,6 +7,9 @@ import sys
 import os
 from pathlib import Path
 
+# Set PyTorch memory configuration BEFORE importing torch
+os.environ['PYTORCH_HIP_ALLOC_CONF'] = 'expandable_segments:True'
+
 # Load environment variables from .env file
 env_path = Path(__file__).parent.parent.parent.parent / '.env'  # Go up to Paralegal root
 if env_path.exists():
@@ -60,6 +63,12 @@ except Exception as e:
 # Test 3: Transcribe
 print("\nTEST 3: Transcribing...")
 try:
+    # Clear GPU cache before transcription
+    import torch
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        print(f"GPU memory before transcription: {torch.cuda.memory_allocated()/1e9:.2f} GB allocated")
+    
     result = transcriber.transcribe(test_file, language="en")
     print(f"✓ Transcribed!")
     print(f"\nTranscript ({len(result['text'])} chars):")
