@@ -156,11 +156,21 @@ class AMDLLMClient:
             
             return result["choices"][0]["message"]["content"].strip()
             
-        except Exception as e:
+        except requests.exceptions.HTTPError as e:
+            # Log the ACTUAL error message from vLLM
             logger.error(f"Chat completion failed: {e}")
-            # Fallback to regular completion
-            prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
-            return self.generate(prompt, max_tokens, temperature, top_p)
+            try:
+                error_detail = response.json() if response else None
+                logger.error(f"vLLM error response: {error_detail}")
+            except:
+                logger.error(f"vLLM error text: {response.text if response else 'No response'}")
+            # Calculate total prompt size for debugging
+            total_chars = sum(len(m.get('content', '')) for m in messages)
+            logger.error(f"Total prompt size: {total_chars} chars (~{total_chars // 4} tokens)")
+            raise Exception(f"Chat completion failed: {str(e)}")
+        except Exception as e:
+            logger.error(f"Chat completion unexpected error: {e}")
+            raise
     
     def get_model_info(self) -> Dict:
         """
