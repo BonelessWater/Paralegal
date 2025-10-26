@@ -186,32 +186,55 @@ class MultiAgentLegalResearcher:
     async def _fetch_single_opinion(self, session: aiohttp.ClientSession, case: Dict, url: str, headers: Dict) -> Dict:
         """Fetch opinion text for a single case"""
         try:
-            # Try to get HTML text endpoint
-            # CourtListener API: opinion URL like /opinion/123/case-name/
-            # Add ?format=json to get JSON response
-            api_url = url.rstrip('/') + '/?format=json'
+            # CourtListener URLs are like: https://www.courtlistener.com/opinion/4250579/state-v-montgomery-slip-opinion/
+            # We need to extract the opinion ID and use the API endpoint
+            # API endpoint: https://www.courtlistener.com/api/rest/v4/opinions/{id}/
             
-            async with session.get(api_url, headers=headers, timeout=10) as response:
+            # Extract opinion ID from URL
+            parts = url.rstrip('/').split('/')
+            opinion_id = None
+            for i, part in enumerate(parts):
+                if part == 'opinion' and i + 1 < len(parts):
+                    opinion_id = parts[i + 1]
+                    break
+            
+            if not opinion_id:
+                logger.debug(f"✗ Could not extract opinion ID from URL: {url}")
+                return case
+            
+            # Construct API URL
+            api_url = f"https://www.courtlistener.com/api/rest/v4/opinions/{opinion_id}/"
+            
+            async with session.get(api_url, headers=headers, timeout=15) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # Opinion text is in 'html' or 'plain_text' or 'html_with_citations' field
+                    # Opinion text is in 'html_with_citations', 'html', 'plain_text', or 'html_lawbox'
                     opinion_text = (
                         data.get('html_with_citations') or 
                         data.get('html') or 
                         data.get('plain_text') or 
                         data.get('html_lawbox') or
+                        data.get('xml_harvard') or
                         ''
                     )
                     
-                    # Limit to reasonable size (first 10000 chars to avoid huge opinions)
-                    if opinion_text:
-                        case['opinion_text'] = opinion_text[:10000]
+                    # Strip HTML tags if present to get plain text
+                    if opinion_text and '<' in opinion_text:
+                        # Simple HTML stripping - just remove tags
+                        import re
+                        opinion_text = re.sub(r'<[^>]+>', ' ', opinion_text)
+                        opinion_text = re.sub(r'\s+', ' ', opinion_text).strip()
                     
-                    logger.debug(f"✓ Fetched {len(opinion_text)} chars for {case.get('case_name', 'Unknown')[:50]}")
+                    # Limit to reasonable size (first 8000 chars to avoid huge opinions)
+                    if opinion_text:
+                        case['opinion_text'] = opinion_text[:8000]
+                        logger.info(f"✓ Fetched {len(opinion_text)} chars for {case.get('case_name', 'Unknown')[:50]}")
+                    else:
+                        logger.warning(f"✗ No opinion text in response for {case.get('case_name', 'Unknown')[:50]}")
                 else:
-                    logger.debug(f"✗ Failed to fetch opinion (status {response.status}): {case.get('case_name', 'Unknown')[:50]}")
+                    logger.warning(f"✗ Failed to fetch opinion (status {response.status}): {case.get('case_name', 'Unknown')[:50]}")
         except Exception as e:
-            logger.debug(f"✗ Error fetching opinion: {e}")
+            logger.warning(f"✗ Error fetching opinion: {e}")
         
         return case
     
