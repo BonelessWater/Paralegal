@@ -1,3 +1,12 @@
+<<<<<<< HEAD
+=======
+#!/usr/bin/env python3
+"""
+Complete System Test: RAG + LLM Integration
+Demonstrates the full pipeline from document search to AI-powered legal analysis
+"""
+
+>>>>>>> 6fdc0426296657e01d874ddb731d334005a42980
 import sys
 sys.path.append('ml_pipeline')
 from rag_embeddings import RAGEmbeddings
@@ -37,15 +46,25 @@ prompt = f"""You are a legal research assistant. Based on these similar personal
 
 Question: What are the key factors affecting settlement value in a Florida car accident case with herniated disc injury?
 
+<<<<<<< HEAD
 Provide a concise analysis focusing on:
 1. Typical settlement ranges
 2. Key liability factors
+=======
+Provide a concise analysis (200 words max) focusing on:
+1. Typical settlement ranges
+2. Key liability factors  
+>>>>>>> 6fdc0426296657e01d874ddb731d334005a42980
 3. Important medical documentation"""
 
 response = client.completions.create(
     model='Equall/Saul-7B-Instruct-v1',
     prompt=prompt,
+<<<<<<< HEAD
     max_tokens=400,
+=======
+    max_tokens=250,  # Reduced to keep output focused
+>>>>>>> 6fdc0426296657e01d874ddb731d334005a42980
     temperature=0.3
 )
 
