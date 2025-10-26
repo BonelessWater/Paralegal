@@ -952,26 +952,54 @@ Write the complete integrated memo now:"""
     
     async def _quality_check_memo(self, memo: str, findings: List[AgentFinding]) -> str:
         """
-        STAGE 4: Quality Checker - validates completeness and returns memo.
+        STAGE 4: Quality Checker - fixes typos, formatting issues, and validates completeness.
         
-        Simply validates the memo has key sections and returns it.
-        No LLM call needed - just structural validation.
+        Critical final review to catch errors that need human-level judgment.
         """
         # If memo is empty (Stage 3 failed), return error message
         if not memo or len(memo.strip()) < 50:
             logger.error("Stage 3 integration failed - memo is empty or too short")
             return "[ERROR: Integration stage failed to generate memo. Please check Stage 3 logs.]"
         
-        # Simple validation: check for key sections
-        required_sections = ['EXECUTIVE SUMMARY', 'LEGAL FRAMEWORK', 'CASE', 'PRACTICAL GUIDANCE']
-        missing_sections = [section for section in required_sections if section not in memo.upper()]
+        # Count findings by type for validation
+        case_count = len([f for f in findings if f.agent_role == AgentRole.CASE_ANALYST])
+        precedent_count = len([f for f in findings if f.agent_role == AgentRole.PRECEDENT_HUNTER])
+        principle_count = len([f for f in findings if f.agent_role == AgentRole.LEGAL_PRINCIPLES])
         
-        if missing_sections:
-            logger.warning(f"Memo missing sections: {missing_sections}, but proceeding anyway")
+        prompt = f"""Review this legal research memo and fix any typos, grammatical errors, or formatting issues. Return ONLY the corrected memo text - do not include any commentary, instructions, or notes.
+
+MEMO TO REVIEW:
+{memo}
+
+VALIDATION CHECKLIST (internal use only - do not include in output):
+- Has Executive Summary, Legal Framework, Case Analysis, Practical Guidance
+- Incorporates {case_count} case analyses, {precedent_count} precedents, {principle_count} principles
+- Fix any typos, grammar issues, incomplete sentences
+- Ensure consistent formatting and professional tone
+
+CORRECTED MEMO (output only the memo text, nothing else):"""
+
+        response = await self._ask_llm(prompt, max_tokens=3500, temperature=0.2, timeout=60)  # Low temp for careful review
         
-        # Return the memo as-is from Stage 3
-        logger.info(f"✓ Quality check passed - memo has {len(memo)} chars")
-        return memo.strip()
+        # Extra safety: strip any common instruction artifacts
+        response = response.strip()
+        
+        # Remove any lines that look like instructions (defensive measure)
+        lines = response.split('\n')
+        filtered_lines = []
+        for line in lines:
+            lower_line = line.lower().strip()
+            # Skip lines that are clearly instructions
+            if any(phrase in lower_line for phrase in [
+                'corrected memo:', 'output only', 'validation checklist', 
+                'internal use only', 'do not include', 'memo to review'
+            ]):
+                continue
+            filtered_lines.append(line)
+        
+        final_memo = '\n'.join(filtered_lines).strip()
+        
+        return final_memo
     
     # ========================================================================
     # ORIGINAL SINGLE-SHOT SYNTHESIS (FALLBACK)
