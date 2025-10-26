@@ -88,6 +88,8 @@ class CourtListenerScraper:
         self.driver = None
         self.is_authenticated = False
         self.cache = {}
+        self.last_request_time = 0  # For rate limiting
+        self.rate_limit = self.config['scraping']['request_delay']  # Requests per second
         
         logger.info(f"CourtListener scraper initialized in {mode} mode")
     
@@ -387,6 +389,196 @@ class CourtListenerScraper:
             return response.get("plain_text", response.get("html", ""))
         return None
     
+    def search_cases_web(self, query: str, max_results: int = 10) -> List[LegalCase]:
+        """
+        Search for legal cases using web scraping (Selenium).
+        This is the FREE method that doesn't require API access.
+        
+        Args:
+            query: Search query
+            max_results: Maximum number of results to scrape
+            
+        Returns:
+            List of LegalCase objects
+        """
+        logger.info(f"Web scraping for: '{query}' (max {max_results} results)")
+        
+        try:
+            # Initialize driver if needed
+            if not self.driver:
+                self.driver = self._init_selenium_driver()
+                if not self.driver:
+                    logger.error("Cannot initialize WebDriver")
+                    return []
+            
+            # Ensure authenticated (even if just public access)
+            if not self.is_authenticated:
+                self.authenticate_web()
+            
+            # Build search URL
+            search_url = f"{self.BASE_URL}/?q={requests.utils.quote(query)}&type=o&order_by=score+desc&stat_Precedential=on"
+            logger.info(f"Navigating to: {search_url}")
+            
+            self.driver.get(search_url)
+            time.sleep(3)  # Wait for page load
+            
+            # Parse results
+            cases = self._scrape_search_results_page(max_results)
+            logger.info(f"Scraped {len(cases)} cases from web")
+            
+            return cases
+            
+        except Exception as e:
+            logger.error(f"Web scraping error: {e}")
+            return []
+    
+    def _scrape_search_results_page(self, max_results: int) -> List[LegalCase]:
+        """
+        Scrape cases from current search results page
+        
+        Args:
+            max_results: Maximum number of results to scrape
+            
+        Returns:
+            List of LegalCase objects
+        """
+        cases = []
+        
+        try:
+            # Get page source and parse with BeautifulSoup
+            page_source = self.driver.page_source
+            soup = BeautifulSoup(page_source, 'html.parser')
+            
+            # Find result items (CourtListener uses article tags for results)
+            result_items = soup.find_all('article', class_=re.compile(r'result|search-result'))
+            
+            if not result_items:
+                # Try alternative selectors
+                result_items = soup.find_all('div', class_=re.compile(r'result'))
+            
+            if not result_items:
+                logger.warning("No results found on page - may need to adjust selectors")
+                # Try to get ANY results
+                result_items = soup.find_all(['article', 'div'], limit=max_results)
+            
+            logger.info(f"Found {len(result_items)} result items on page")
+            
+            for item in result_items[:max_results]:
+                try:
+                    case = self._extract_case_from_html(item)
+                    if case:
+                        cases.append(case)
+                        logger.info(f"Scraped: {case.case_name[:60]}...")
+                    
+                    # Rate limiting
+                    time.sleep(self.config['scraping']['request_delay'])
+                    
+                except Exception as e:
+                    logger.error(f"Error extracting case: {e}")
+                    continue
+            
+        except Exception as e:
+            logger.error(f"Error scraping page: {e}")
+        
+        return cases
+    
+    def _extract_case_from_html(self, item: BeautifulSoup) -> Optional[LegalCase]:
+        """
+        Extract case data from HTML element
+        
+        Args:
+            item: BeautifulSoup element containing case info
+            
+        Returns:
+            LegalCase object or None
+        """
+        try:
+            # Extract case name (usually in h3 or h4)
+            title_elem = item.find(['h3', 'h4', 'h2'], class_=re.compile(r'title|name'))
+            if not title_elem:
+                title_elem = item.find('a', href=re.compile(r'/opinion/'))
+            
+            case_name = title_elem.get_text(strip=True) if title_elem else "Unknown Case"
+            
+            # Extract URL
+            link_elem = item.find('a', href=re.compile(r'/opinion/'))
+            url = f"{self.BASE_URL}{link_elem['href']}" if link_elem else ""
+            
+            # Extract citation
+            citation_elem = item.find(text=re.compile(r'\d+\s+[A-Za-z\.]+\s+\d+'))
+            citation = citation_elem.strip() if citation_elem else "No citation"
+            
+            # Extract court
+            court_elem = item.find(class_=re.compile(r'court'))
+            if not court_elem:
+                court_elem = item.find(text=re.compile(r'Court|Circuit|District'))
+            court = court_elem.get_text(strip=True) if court_elem else "Unknown Court"
+            
+            # Extract date
+            date_elem = item.find(class_=re.compile(r'date'))
+            if not date_elem:
+                date_elem = item.find(text=re.compile(r'\d{4}-\d{2}-\d{2}|\w+\s+\d+,\s+\d{4}'))
+            date_filed = date_elem.strip() if date_elem else "Unknown Date"
+            
+            # Extract snippet/summary
+            snippet_elem = item.find(class_=re.compile(r'snippet|excerpt|summary'))
+            if not snippet_elem:
+                # Get any paragraph text
+                snippet_elem = item.find('p')
+            snippet = snippet_elem.get_text(strip=True) if snippet_elem else ""
+            
+            case = LegalCase(
+                case_name=case_name,
+                citation=citation,
+                court=court,
+                date_filed=date_filed,
+                snippet=snippet,
+                opinion_text=snippet,  # Will fetch full text separately if needed
+                url=url,
+                source="CourtListener (Web)"
+            )
+            
+            return case
+            
+        except Exception as e:
+            logger.error(f"Error extracting case from HTML: {e}")
+            return None
+    
+    def search_cases_hybrid(self, query: str, max_results: int = 10) -> List[LegalCase]:
+        """
+        Hybrid search: Try API first, fall back to web scraping.
+        
+        Args:
+            query: Search query
+            max_results: Maximum number of results
+            
+        Returns:
+            List of LegalCase objects
+        """
+        logger.info(f"Hybrid search for: '{query}'")
+        
+        # Try API first if we have a token
+        if self.config['courtlistener']['api_token']:
+            logger.info("Trying API first...")
+            cases = self.search_cases(query, max_results)
+            if cases:
+                logger.info(f"API success: {len(cases)} cases")
+                return cases
+            logger.warning("API failed, falling back to web scraping...")
+        
+        # Fall back to web scraping
+        logger.info("Using web scraping...")
+        return self.search_cases_web(query, max_results)
+    
+    def cleanup(self):
+        """Clean up resources (close browser, etc.)"""
+        if self.driver:
+            try:
+                self.driver.quit()
+                logger.info("WebDriver closed")
+            except:
+                pass
+    
     def save_cases_to_json(self, cases: List[LegalCase], filepath: str):
         """Save scraped cases to JSON file for caching/backup"""
         try:
@@ -413,24 +605,22 @@ class CourtListenerScraper:
 def test_scraper():
     """Test the CourtListener scraper with sample queries"""
     logger.info("=" * 60)
-    logger.info("Testing CourtListener Scraper")
+    logger.info("Testing CourtListener Scraper (Web Scraping Mode)")
     logger.info("=" * 60)
     
-    scraper = CourtListenerScraper(rate_limit=0.5)  # 0.5 requests/second for safety
+    scraper = CourtListenerScraper(mode='web')  # Use web scraping (FREE!)
     
     # Test queries
     test_queries = [
         "employment discrimination wrongful termination",
         "breach of contract damages",
-        "personal injury negligence",
-        "intellectual property patent infringement",
-        "constitutional law first amendment"
+        "personal injury negligence"
     ]
     
     all_cases = []
-    for query in test_queries[:3]:  # Test first 3 queries
+    for query in test_queries:
         logger.info(f"\n--- Testing query: '{query}' ---")
-        cases = scraper.search_cases(query, max_results=5)
+        cases = scraper.search_cases_web(query, max_results=5)
         
         for i, case in enumerate(cases, 1):
             logger.info(f"\nCase {i}:")
@@ -439,10 +629,11 @@ def test_scraper():
             logger.info(f"  Court: {case.court}")
             logger.info(f"  Date: {case.date_filed}")
             logger.info(f"  URL: {case.url}")
-            logger.info(f"  Snippet: {case.snippet[:200]}...")
+            if case.snippet:
+                logger.info(f"  Snippet: {case.snippet[:200]}...")
         
         all_cases.extend(cases)
-        time.sleep(1)  # Extra delay between queries
+        time.sleep(2)  # Extra delay between queries
     
     # Save to cache
     cache_dir = os.path.join(os.path.dirname(__file__), "data", "cache")
@@ -450,10 +641,15 @@ def test_scraper():
     cache_file = os.path.join(cache_dir, f"test_cases_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
     scraper.save_cases_to_json(all_cases, cache_file)
     
+    # Cleanup
+    scraper.cleanup()
+    
     logger.info(f"\n{'=' * 60}")
     logger.info(f"Test complete! Scraped {len(all_cases)} total cases")
     logger.info(f"Results cached at: {cache_file}")
     logger.info(f"{'=' * 60}")
+    
+    return all_cases
 
 
 if __name__ == "__main__":
