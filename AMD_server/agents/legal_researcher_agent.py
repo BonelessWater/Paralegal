@@ -108,6 +108,11 @@ Guidelines:
                 logger.info("🚀 Running intelligent scraper for live case research...")
                 research_result = await self.intelligent_scraper.research_question_async(question)
                 
+                # Handle case where scraper returns unexpected format
+                if not isinstance(research_result, dict):
+                    logger.error(f"Intelligent scraper returned unexpected type: {type(research_result)}")
+                    research_result = {}
+                
                 total_cases = research_result.get('total_cases_found', 0)
                 cases_per_sec = research_result.get('cases_per_second', 0)
                 duration = research_result.get('duration_seconds', 0)
