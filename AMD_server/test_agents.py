@@ -125,15 +125,15 @@ We need all medical records for the personal injury claim."""
         print(f"❌ Agent failed: {e}")
     
     # ========================================================================
-    # TEST 3: Legal Researcher
+    # TEST 3: Legal Researcher (with RAG)
     # ========================================================================
-    print_section("🤖 Agent 3: Legal Researcher")
+    print_section("🤖 Agent 3: Legal Researcher (RAG-Enhanced)")
     
-    agent3 = LegalResearcherAgent(llm)
+    agent3 = LegalResearcherAgent(llm, use_rag=True)
     
-    injury = "Broken wrist from slip and fall"
+    injury = "Car accident with back injury"
     jurisdiction = "Florida"
-    details = "Workplace accident, clear liability, 6 weeks recovery, ongoing pain"
+    details = "Rear-end collision, herniated disc L4-L5, ongoing medical treatment"
     
     print(f"Input:")
     print(f"  Injury: {injury}")
@@ -142,6 +142,19 @@ We need all medical records for the personal injury claim."""
     
     try:
         result3 = agent3.process(injury, jurisdiction, details)
+        
+        # Show similar cases if found
+        if 'similar_cases' in result3 and result3['similar_cases']:
+            print("\n📚 Similar Cases Found via RAG:")
+            print("-" * 70)
+            for i, case in enumerate(result3['similar_cases'], 1):
+                print(f"\n{i}. {case['title']}")
+                print(f"   Similarity: {case['similarity']:.1%}")
+                print(f"   Type: {case['document_type']}")
+                print(f"   Preview: {case['text_preview'][:150]}...")
+        else:
+            print("\nℹ️  RAG: No similar cases found (or RAG disabled)")
+        
         print_result("✅ Agent Output (research memo)", result3['research_memo'], max_length=800)
     except Exception as e:
         print(f"❌ Agent failed: {e}")
