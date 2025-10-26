@@ -119,12 +119,12 @@ class DataLoader:
         """
         query = """
             SELECT 
+                id,
                 document_id,
-                case_id,
+                title,
                 document_type,
-                file_name,
                 full_text,
-                upload_date
+                created_at as upload_date
             FROM legal_data.documents
             WHERE session_id = 5  -- Morgan & Morgan session
             AND full_text IS NOT NULL
