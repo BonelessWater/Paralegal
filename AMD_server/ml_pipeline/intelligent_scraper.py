@@ -18,15 +18,22 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
 from dataclasses import dataclass, asdict
+
+# Optional Selenium imports (only needed for web scraping mode)
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException
+    from webdriver_manager.chrome import ChromeDriverManager
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    # Will log warning after logger is configured
 
 # Configure logging
 logging.basicConfig(
@@ -91,7 +98,13 @@ class CourtListenerScraper:
         self.last_request_time = 0  # For rate limiting
         self.rate_limit = self.config['scraping']['request_delay']  # Requests per second
         
-        logger.info(f"CourtListener scraper initialized in {mode} mode")
+        if not SELENIUM_AVAILABLE and mode in ['web', 'hybrid']:
+            logger.warning("Selenium not available - web scraping disabled. Install with: pip install selenium webdriver-manager")
+            if mode == 'web':
+                logger.warning("Switching to API mode since web mode requires Selenium")
+                self.mode = 'api'
+        
+        logger.info(f"CourtListener scraper initialized in {self.mode} mode")
     
     def _load_config(self, config_file: str) -> Dict[str, Dict[str, Any]]:
         """Load configuration from INI file"""
@@ -165,8 +178,12 @@ class CourtListenerScraper:
         
         return session
     
-    def _init_selenium_driver(self) -> webdriver.Chrome:
+    def _init_selenium_driver(self) -> Optional[webdriver.Chrome]:
         """Initialize Selenium WebDriver for web scraping mode"""
+        if not SELENIUM_AVAILABLE:
+            logger.error("Selenium not available - cannot initialize web driver")
+            return None
+            
         chrome_options = Options()
         chrome_options.add_argument('--headless')  # Run in background
         chrome_options.add_argument('--no-sandbox')

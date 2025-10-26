@@ -84,7 +84,15 @@ class QueryGeneratorAgent:
             api_key: API key (not needed for local vLLM, use "dummy")
         """
         self.client = OpenAI(base_url=base_url, api_key=api_key)
-        self.model = "neuralmagic/Llama-3.2-1B-Instruct-FP8"  # Or your Saul-7B model
+        
+        # Auto-detect model from vLLM server
+        try:
+            models = self.client.models.list()
+            self.model = models.data[0].id if models.data else "neuralmagic/Llama-3.2-1B-Instruct-FP8"
+        except Exception as e:
+            logger.warning(f"Could not detect model from server: {e}")
+            self.model = "neuralmagic/Llama-3.2-1B-Instruct-FP8"
+        
         logger.info(f"Query generator initialized with model: {self.model}")
     
     def generate_queries(self, user_question: str, num_queries: int = 3) -> List[GeneratedQuery]:
