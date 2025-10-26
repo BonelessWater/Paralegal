@@ -272,7 +272,7 @@ class MultiAgentLegalResearcher:
         criminal_indicators = [
             'guilty', 'prosecutor', 'sentencing', 'criminal appeal', 'convicted', 
             'plea', 'indictment', 'state v.', 'people v.', 'commonwealth v.',
-            'united states v.', 'u.s. v.', 'government's case'
+            'united states v.', 'u.s. v.', 'government\'s case'
         ]
         
         # Contract indicators (to filter out when question is about torts)
