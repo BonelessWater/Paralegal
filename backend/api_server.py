@@ -241,7 +241,8 @@ async def startup_event():
         agents_db['legal_researcher'] = {
             'instance': LegalResearcherAgent(
                 llm_client,
-                intelligent_scraper=intelligent_scraper  # INTEGRATED!
+                intelligent_scraper=intelligent_scraper,  # INTEGRATED!
+                use_multi_agent=True  # Enable 4-stage multi-agent synthesis pipeline
             ),
             'name': 'Legal Researcher',
             'tasks_processed': 0,

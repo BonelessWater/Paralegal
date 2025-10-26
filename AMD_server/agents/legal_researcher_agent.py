@@ -228,7 +228,9 @@ Generated Queries ({len(research_result.get('queries', []))})"""
             except Exception as e:
                 logger.error(f"RAG search error: {e}")
         
-                # Step 3: Choose analysis method: Multi-Agent or Standard LLM
+        # Step 3: Choose analysis method: Multi-Agent or Standard LLM
+        analysis = None  # Initialize to avoid UnboundLocalError
+        
         if self.use_multi_agent and self.multi_agent_researcher and cases_data and len(cases_data) >= 10:
             # Use multi-agent iterative research for comprehensive analysis
             try:
