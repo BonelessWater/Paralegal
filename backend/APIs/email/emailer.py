@@ -113,12 +113,44 @@ def save_attachments(msg: Message) -> List[str]:
     return saved
 
 def send_prompt_to_server(frm: str, subj: str, body_text: str) -> None:
+    import json
+    from datetime import datetime
+
     if not body_text:
         body_text = "(no body)"
     prompt = f"EMAIL FROM: {frm}\nSUBJECT: {subj}\n\nBODY:\n{body_text}"
     try:
         res = post_prompt(prompt)
-        print(f"🛰️  /prompt OK: {res}")
+        print(f"🛰️  /prompt OK: {res.get('response', res)}")
+
+        # Check if server returned a reply email
+        if 'reply_email' in res:
+            reply = res['reply_email']
+            print("\n" + "="*70)
+            print("📧 REPLY EMAIL GENERATED")
+            print("="*70)
+            print(f"To: {reply.get('to_name', '')} <{reply.get('to', '')}>")
+            print(f"From: {reply.get('from_name', '')} <{reply.get('from', '')}>")
+            print(f"Subject: {reply.get('subject', '')}")
+            print(f"Classification: {reply.get('classification', 'unknown').upper()}")
+            print(f"Auto-send: {reply.get('auto_send', False)}")
+            print(f"Requires Review: {reply.get('requires_review', True)}")
+            print("-"*70)
+            print("BODY:")
+            print(reply.get('body', ''))
+            print("="*70)
+
+            # Save reply locally as well
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            local_filename = f"client_reply_{timestamp}.json"
+            try:
+                with open(local_filename, "w", encoding="utf-8") as f:
+                    json.dump(reply, f, indent=2)
+                print(f"💾 Reply saved locally: {local_filename}")
+            except Exception as e:
+                print(f"⚠️  Could not save reply locally: {e}")
+            print()
+
     except Exception as e:
         print(f"❌ /prompt error: {e}")
 

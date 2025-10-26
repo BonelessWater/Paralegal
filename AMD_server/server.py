@@ -87,6 +87,163 @@ except ImportError as e:
         print(f"[SERVER] Could not import mock_data_service: {e}")
         data_service = None
 
+def _parse_email_prompt(prompt: str) -> dict:
+    """Parse email data from the prompt string."""
+    import re
+
+    # Check if this is an email prompt
+    if not prompt.startswith("EMAIL FROM:"):
+        return None
+
+    email_data = {}
+
+    # Extract sender
+    from_match = re.search(r"EMAIL FROM:\s*(.+?)(?:\n|$)", prompt, re.IGNORECASE)
+    if from_match:
+        email_data["from"] = from_match.group(1).strip()
+
+    # Extract subject
+    subject_match = re.search(r"SUBJECT:\s*(.+?)(?:\n|$)", prompt, re.IGNORECASE)
+    if subject_match:
+        email_data["subject"] = subject_match.group(1).strip()
+
+    # Extract body (everything after "BODY:")
+    body_match = re.search(r"BODY:\s*(.+)", prompt, re.IGNORECASE | re.DOTALL)
+    if body_match:
+        email_data["body"] = body_match.group(1).strip()
+
+    return email_data if email_data else None
+
+
+def _generate_reply_email(email_data: dict) -> dict:
+    """Generate a reply email based on the incoming email data."""
+    from datetime import datetime
+
+    sender = email_data.get("from", "")
+    subject = email_data.get("subject", "")
+    body = email_data.get("body", "")
+
+    # Extract sender name from email
+    import re
+    name_match = re.search(r"(.+?)\s*<", sender)
+    sender_name = name_match.group(1).strip() if name_match else sender.split("@")[0]
+
+    # Extract email address
+    email_match = re.search(r"<(.+?)>", sender) or re.search(r"[\w\.-]+@[\w\.-]+", sender)
+    sender_email = email_match.group(1) if email_match and "<" in sender else email_match.group(0) if email_match else sender
+
+    # Classify the email content
+    body_lower = body.lower()
+
+    # Generate response based on content
+    if "pip" in body_lower and "coverage" in body_lower:
+        reply_body = f"""Dear {sender_name},
+
+Thank you for reaching out with your questions regarding your Personal Injury Protection (PIP) coverage and settlement offer related to your March 20, 2022 accident.
+
+I have carefully reviewed the details you've provided. Let me address your concerns:
+
+**Regarding Your PIP Coverage:**
+
+Florida PIP coverage typically provides $10,000 in medical benefits. However, the payments you're seeing may include:
+- Direct payments to medical providers under PIP
+- Additional payments from the at-fault driver's bodily injury (BI) coverage
+- It's important to obtain a detailed breakdown from State Farm to understand which coverage paid for what
+
+**Regarding the Settlement Offer:**
+
+The $25,000 policy limit mentioned in the offer letter is likely from the at-fault driver's Bodily Injury (BI) coverage. This is separate from your PIP benefits.
+
+Key points to consider:
+1. **Bodily Injury Coverage**: The $25,000 appears to be the BI policy limit from Mr. Thomas's insurance
+2. **Underinsured Motorist (UIM)**: After accepting the BI limit, you may be able to pursue UIM coverage if your own policy includes it and your damages exceed the $25,000
+3. **PIP Treatment**: You should still qualify for continued treatment under PIP if benefits haven't been exhausted
+
+**Next Steps:**
+
+To provide you with the most accurate guidance, I recommend:
+- Reviewing your complete insurance policy documents
+- Obtaining a detailed payment breakdown from State Farm
+- Scheduling a consultation to discuss settlement strategy
+
+Please send me:
+1. Your insurance policy declaration page
+2. Complete PIP payment log
+3. The settlement offer letter
+4. Any EMC evaluation reports
+
+I will review these documents and provide you with a comprehensive analysis within 24-48 hours.
+
+**Important**: Do not accept any settlement offers until we've had a chance to review all the details together.
+
+Best regards,
+Paralegal AI Assistant
+Law Office
+
+**This is an automated initial response. A licensed attorney will review your case and follow up with you directly.**"""
+
+    elif "settlement" in body_lower or "offer" in body_lower:
+        reply_body = f"""Dear {sender_name},
+
+Thank you for contacting us regarding your settlement offer.
+
+I have received your inquiry and am reviewing the details you provided. Settlement decisions are important and require careful consideration of all factors.
+
+I will need to:
+1. Review the settlement offer details
+2. Assess your total damages and expenses
+3. Consult with the supervising attorney
+4. Provide you with a comprehensive recommendation
+
+Please do not accept or reject any settlement offers until we have had an opportunity to discuss this matter further.
+
+I will follow up with you within 24 hours with next steps.
+
+Best regards,
+Paralegal AI Assistant
+Law Office
+
+**This is an automated initial response. A licensed attorney will review your case and follow up with you directly.**"""
+
+    else:
+        reply_body = f"""Dear {sender_name},
+
+Thank you for your email. I have received your message and am reviewing the information you provided.
+
+I will look into this matter and get back to you with a detailed response within 1-2 business days.
+
+If you need immediate assistance, please don't hesitate to contact our office directly.
+
+Best regards,
+Paralegal AI Assistant
+Law Office
+
+**This is an automated initial response. A licensed attorney will review your case and follow up with you directly.**"""
+
+    # Prepare reply subject
+    reply_subject = subject
+    if not reply_subject.lower().startswith("re:"):
+        reply_subject = f"Re: {reply_subject}"
+
+    # Create reply JSON structure
+    reply = {
+        "to": sender_email,
+        "to_name": sender_name,
+        "from": "paralegal@lawoffice.com",
+        "from_name": "Paralegal AI Assistant",
+        "subject": reply_subject,
+        "body": reply_body,
+        "timestamp": datetime.now().isoformat(),
+        "in_reply_to": email_data.get("message_id", ""),
+        "original_subject": subject,
+        "classification": "pip_coverage" if "pip" in body_lower else "general_inquiry",
+        "auto_send": False,
+        "requires_review": True
+    }
+
+    return reply
+
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend requests
 
@@ -102,11 +259,43 @@ else:
 
 @app.post("/prompt")
 def handle_prompt():
+    import re
+    import json
+    from datetime import datetime
+
     data = request.get_json(silent=True) or {}
     prompt = (data.get("prompt") or "").strip()
     print(f"[SERVER] /prompt: {prompt[:140]}")
-    time.sleep(0.02)
-    return jsonify({"response": f"Processed prompt: {prompt.upper()}"})
+
+    # Parse email from prompt
+    email_data = _parse_email_prompt(prompt)
+
+    if email_data:
+        # Generate reply email
+        reply = _generate_reply_email(email_data)
+
+        # Save JSON to file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"email_reply_{timestamp}.json"
+        filepath = os.path.join(os.path.dirname(__file__), "replies", filename)
+
+        # Create replies directory if it doesn't exist
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(reply, f, indent=2)
+
+        print(f"[SERVER] Saved reply to: {filepath}")
+
+        return jsonify({
+            "response": f"Processed prompt: {prompt[:100].upper()}...",
+            "reply_email": reply,
+            "saved_to": filename
+        })
+    else:
+        # Fallback for non-email prompts
+        time.sleep(0.02)
+        return jsonify({"response": f"Processed prompt: {prompt.upper()}"})
 
 @app.post("/ocr")
 def ocr_endpoint():
