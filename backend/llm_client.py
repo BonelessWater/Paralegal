@@ -20,7 +20,7 @@ class AMDLLMClient:
         self, 
         base_url: str = "http://localhost:8000",
         model_name: str = "Equall/Saul-7B-Instruct-v1",
-        timeout: int = 30
+        timeout: int = 120  # Increased from 30 to 120 seconds for multi-agent workloads
     ):
         """
         Initialize AMD LLM Client
@@ -28,7 +28,7 @@ class AMDLLMClient:
         Args:
             base_url: vLLM server URL (default: http://localhost:8000)
             model_name: Model identifier on vLLM server
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (default: 120 for parallel requests)
         """
         self.base_url = base_url.rstrip('/')
         self.model_name = model_name
