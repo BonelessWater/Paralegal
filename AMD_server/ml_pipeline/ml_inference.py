@@ -40,6 +40,14 @@ try:
 except ImportError:
     OCRProcessor = None
 
+# Email processor (optional, will fail gracefully if not available)
+try:
+    from email.email_classifier import EmailClassifier
+    from email.email_processor import EmailProcessor
+except ImportError:
+    EmailClassifier = None
+    EmailProcessor = None
+
 
 class MLInference:
     """
@@ -55,7 +63,8 @@ class MLInference:
         load_document_classifier: bool = True,
         load_rag_embeddings: bool = True,
         load_audio_transcriber: bool = True,
-        load_ocr: bool = True
+        load_ocr: bool = True,
+        load_email: bool = True
     ):
         """
         Initialize ML inference with all models.
@@ -66,6 +75,7 @@ class MLInference:
             load_rag_embeddings: Load RAG embeddings for semantic search
             load_audio_transcriber: Load audio transcription model
             load_ocr: Load OCR processor for image text extraction
+            load_email: Load email classification and processing
         """
         self.models_dir = models_dir or str(Path(__file__).parent / "trained_models")
         
@@ -78,6 +88,8 @@ class MLInference:
         self.rag_embeddings = None
         self.audio_transcriber = None
         self.ocr_processor = None
+        self.email_classifier = None
+        self.email_processor = None
         
         # Load models
         if load_document_classifier:
@@ -91,6 +103,9 @@ class MLInference:
         
         if load_ocr:
             self._load_ocr_processor()
+        
+        if load_email:
+            self._load_email_pipeline()
         
         print("\n✓ ML Inference ready!")
         print("=" * 70)
@@ -157,6 +172,29 @@ class MLInference:
         except Exception as e:
             print(f"⚠️  OCR processor failed to load: {e}")
             print("   OCR functionality will be disabled")
+    
+    def _load_email_pipeline(self):
+        """Load email classification and processing pipeline."""
+        try:
+            print("\nLoading email pipeline...")
+            
+            if EmailClassifier is None or EmailProcessor is None:
+                print("⚠️  Email pipeline not available")
+                return
+            
+            self.email_classifier = EmailClassifier()
+            self.email_processor = EmailProcessor()
+            
+            model_path = Path(self.models_dir) / "email_classifier.pkl"
+            if model_path.exists():
+                self.email_classifier.load_model()
+                print("✓ Email pipeline loaded (classifier trained)")
+            else:
+                print("✓ Email pipeline loaded (classifier not trained yet)")
+            
+        except Exception as e:
+            print(f"⚠️  Email pipeline failed to load: {e}")
+            print("   Email functionality will be limited")
     
     # =========================================================================
     # DOCUMENT CLASSIFICATION
@@ -601,6 +639,118 @@ class MLInference:
         return results
     
     # =========================================================================
+    # EMAIL PROCESSING
+    # =========================================================================
+    
+    def classify_email(
+        self,
+        email_text: str,
+        return_probabilities: bool = False
+    ) -> Union[str, Dict]:
+        """
+        Classify email by task type.
+        
+        Args:
+            email_text: Email body text
+            return_probabilities: Return probability distribution
+            
+        Returns:
+            Email task type (or dict with probabilities)
+        """
+        if self.email_classifier is None:
+            raise RuntimeError("Email classifier not loaded")
+        
+        if return_probabilities:
+            return self.email_classifier.predict_proba(email_text)
+        else:
+            return self.email_classifier.predict(email_text)
+    
+    def analyze_email(
+        self,
+        email_text: str,
+        subject: Optional[str] = None,
+        sender: Optional[str] = None,
+        sent_date: Optional[str] = None
+    ) -> Dict:
+        """
+        Comprehensive email analysis (classification + entities + urgency + sentiment).
+        
+        Args:
+            email_text: Email body
+            subject: Subject line
+            sender: Sender email
+            sent_date: Sent timestamp
+            
+        Returns:
+            Full analysis dict
+        """
+        if self.email_processor is None:
+            raise RuntimeError("Email processor not loaded")
+        
+        # Parse date if string
+        if sent_date and isinstance(sent_date, str):
+            from datetime import datetime
+            try:
+                sent_date = datetime.fromisoformat(sent_date)
+            except:
+                sent_date = None
+        
+        # Process email
+        result = self.email_processor.process_email(
+            email_text,
+            subject=subject,
+            sender=sender,
+            sent_date=sent_date
+        )
+        
+        # Add classification
+        if self.email_classifier:
+            try:
+                task_type = self.email_classifier.predict(email_text)
+                result['task_type'] = task_type
+            except:
+                result['task_type'] = 'UNKNOWN'
+        
+        return result
+    
+    def process_email_batch(
+        self,
+        emails: List[Dict],
+        verbose: bool = True
+    ) -> List[Dict]:
+        """
+        Process multiple emails.
+        
+        Args:
+            emails: List of email dicts with 'body', 'subject', etc.
+            verbose: Print progress
+            
+        Returns:
+            List of analysis results
+        """
+        if self.email_processor is None:
+            raise RuntimeError("Email processor not loaded")
+        
+        if verbose:
+            print(f"\nProcessing {len(emails)} emails...")
+        
+        results = self.email_processor.process_batch(emails)
+        
+        # Add classifications
+        if self.email_classifier:
+            for email, result in zip(emails, results):
+                try:
+                    task_type = self.email_classifier.predict(email.get('body', ''))
+                    result['task_type'] = task_type
+                except:
+                    result['task_type'] = 'UNKNOWN'
+        
+        if verbose:
+            print(f"✓ Processed {len(results)} emails")
+        
+        return results
+    
+    # =========================================================================
     # UTILITY METHODS
     # =========================================================================
     
@@ -628,6 +778,13 @@ class MLInference:
                 'loaded': self.ocr_processor is not None,
                 'gpu': self.ocr_processor.gpu if self.ocr_processor else False,
                 'languages': self.ocr_processor.langs if self.ocr_processor else None
+            },
+            'email_classifier': {
+                'loaded': self.email_classifier is not None,
+                'trained': (self.email_classifier.classifier is not None) if self.email_classifier else False
+            },
+            'email_processor': {
+                'loaded': self.email_processor is not None
             }
         }
 
