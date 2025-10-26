@@ -947,7 +947,7 @@ OUTPUT FORMAT:
 
 Write the complete integrated memo now:"""
 
-        response = await self._ask_llm(prompt, max_tokens=2000, temperature=0.4)
+        response = await self._ask_llm(prompt, max_tokens=2000, temperature=0.4, timeout=60)  # Increased timeout to 60s
         return response.strip()
     
     async def _quality_check_memo(self, memo: str, findings: List[AgentFinding]) -> str:
@@ -956,6 +956,11 @@ Write the complete integrated memo now:"""
         
         Uses small prompt to check quality and fix any issues.
         """
+        # If memo is empty (Stage 3 failed), return error message
+        if not memo or len(memo.strip()) < 50:
+            logger.error("Stage 3 integration failed - memo is empty or too short")
+            return "[ERROR: Integration stage failed to generate memo. Please check Stage 3 logs.]"
+        
         # Count findings by type for validation
         case_count = len([f for f in findings if f.agent_role == AgentRole.CASE_ANALYST])
         precedent_count = len([f for f in findings if f.agent_role == AgentRole.PRECEDENT_HUNTER])
@@ -1065,7 +1070,7 @@ Use proper legal citations and quote from the agent findings."""
         """Extract opinion text from case dict"""
         return case.get('opinion_text', case.get('snippet', ''))
     
-    async def _ask_llm(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.5) -> str:
+    async def _ask_llm(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.5, timeout: int = 30) -> str:
         """Ask LLM with given prompt"""
         try:
             # Validate prompt size
@@ -1082,13 +1087,20 @@ Use proper legal citations and quote from the agent findings."""
                 {"role": "user", "content": full_prompt}
             ]
             
-            response = self.llm.chat_completion(
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            # Temporarily increase timeout for this request
+            original_timeout = self.llm.timeout
+            self.llm.timeout = timeout
             
-            return response.strip()
+            try:
+                response = self.llm.chat_completion(
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                return response.strip()
+            finally:
+                # Restore original timeout
+                self.llm.timeout = original_timeout
             
         except Exception as e:
             logger.error(f"LLM request failed: {e}")
