@@ -44,7 +44,8 @@ class RAGEmbeddings:
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
-        embeddings_dir: str = None
+        embeddings_dir: str = None,
+        device: str = None
     ):
         """
         Initialize RAG embeddings generator.
@@ -54,19 +55,33 @@ class RAGEmbeddings:
                 - "all-MiniLM-L6-v2": Fast, 384-dim, good for most use cases
                 - "all-mpnet-base-v2": Slower, 768-dim, better accuracy
                 - "multi-qa-mpnet-base-dot-v1": Optimized for Q&A
+                - "BAAI/bge-large-en-v1.5": Best for legal docs, 1024-dim
             embeddings_dir: Directory to save/load embeddings
+            device: Device for computation ('cuda', 'cpu', or None for auto-detect)
         """
+        import torch
+        
         self.model_name = model_name
         self.embeddings_dir = embeddings_dir or str(
             Path(__file__).parent / "embeddings"
         )
         
+        # Auto-detect device if not specified
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = device
+        
         # Create embeddings directory
         Path(self.embeddings_dir).mkdir(parents=True, exist_ok=True)
         
-        # Load sentence-transformer model
+        # Load sentence-transformer model with device
         print(f"Loading sentence-transformer model: {model_name}")
-        self.model = SentenceTransformer(model_name)
+        print(f"Device: {device.upper()}")
+        if device == 'cuda' and torch.cuda.is_available():
+            print(f"✅ GPU detected: {torch.cuda.get_device_name(0)}")
+            print(f"   VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        
+        self.model = SentenceTransformer(model_name, device=device)
         
         # Placeholders
         self.index = None
@@ -144,12 +159,23 @@ class RAGEmbeddings:
         
         return self.embeddings
     
-    def build_index(self, embeddings: np.ndarray = None):
+    def build_index(
+        self, 
+        embeddings: np.ndarray = None,
+        use_hnsw: bool = True,
+        M: int = 32,
+        efConstruction: int = 200,
+        efSearch: int = 64
+    ):
         """
         Build FAISS index for fast similarity search.
         
         Args:
             embeddings: Embeddings array. If None, uses self.embeddings.
+            use_hnsw: Use HNSW index (recommended, 10x faster). If False, uses exact search.
+            M: HNSW parameter - number of connections per layer (16-64, higher=better quality)
+            efConstruction: HNSW build quality (40-500, higher=better quality, slower build)
+            efSearch: HNSW search quality (16-512, higher=better recall, slower search)
         """
         if embeddings is None:
             embeddings = self.embeddings
@@ -162,14 +188,31 @@ class RAGEmbeddings:
         # Normalize embeddings for cosine similarity
         faiss.normalize_L2(embeddings)
         
-        # Create FAISS index (Inner Product = cosine similarity for normalized vectors)
         dimension = embeddings.shape[1]
-        self.index = faiss.IndexFlatIP(dimension)
+        
+        if use_hnsw:
+            # HNSW index: Approximate search, 10-100x faster, 95-99% recall
+            print(f"Using HNSW index (M={M}, efConstruction={efConstruction}, efSearch={efSearch})")
+            print(f"Expected: ~95-99% recall, 10-100x faster than exact search")
+            
+            self.index = faiss.IndexHNSWFlat(dimension, M)
+            self.index.hnsw.efConstruction = efConstruction
+            self.index.hnsw.efSearch = efSearch
+            
+            print(f"HNSW Parameters:")
+            print(f"  M (connections): {M}")
+            print(f"  efConstruction (build quality): {efConstruction}")
+            print(f"  efSearch (search quality): {efSearch}")
+        else:
+            # Flat index: Exact search, slower but 100% accurate
+            print("Using Flat index (exact search)")
+            self.index = faiss.IndexFlatIP(dimension)
         
         # Add embeddings to index
         self.index.add(embeddings.astype('float32'))
         
-        print(f"✓ Built FAISS index with {self.index.ntotal} vectors")
+        index_type = "HNSW" if use_hnsw else "Flat"
+        print(f"✓ Built {index_type} FAISS index with {self.index.ntotal} vectors")
     
     def search(
         self,
