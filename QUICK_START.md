@@ -1,313 +1,433 @@
-# 🎉 DASHBOARD INTEGRATION COMPLETE!
+# 🚀 Paralegal AI - Quick Start Guide
 
-## ✅ What You Got
-
-Your **Dashboard** component is now fully integrated with the backend API and displays **real-time intelligent scraper metrics**!
+**Complete deployment guide for the Multi-Agent Legal Research System**
 
 ---
 
-## 📊 Dashboard Features Now Live
+## � System Requirements
 
-### 1. **Real-Time Stats Cards** (Auto-refresh every 10 seconds)
-```
-┌──────────────┬──────────────┬──────────────┬──────────────┐
-│ 📋 Total     │ ⏰ Pending   │ ✅ Completed │ 🧠 Agents    │
-│    15        │     3        │     10       │     2        │
-│ 2 processing │ 2 approval   │ 95.5% rate   │ 125 cases    │
-└──────────────┴──────────────┴──────────────┴──────────────┘
-```
+### AMD Server (Production)
+- **GPU**: AMD MI300X (192GB VRAM)
+- **OS**: Ubuntu with ROCm 6.0
+- **Docker**: For vLLM container
+- **Python**: 3.11+
+- **Node.js**: 18+
 
-**Each card shows:**
-- **Total Tasks**: `stats.total_tasks` + tasks currently processing
-- **Pending Tasks**: `stats.tasks_pending` + tasks awaiting approval (orange alert)
-- **Completed Tasks**: `stats.tasks_completed` + success rate percentage
-- **Active Agents**: `stats.active_agents` + cases scraped today
-
-### 2. **Intelligent Scraper Performance Card**
-Only appears when scraper is active (`cases_scraped_today > 0`):
-
-```
-╔═══════════════════════════════════════════════════════════╗
-║ ⚡ Intelligent Scraper Active                             ║
-║    Real-time legal research across 10.6M opinions         ║
-╠═══════════════════════════════════════════════════════════╣
-║                                                           ║
-║    125                15.2           3              1     ║
-║    Cases Scraped      Cases/sec      Sessions       Tasks ║
-║    Today              (Current)                     Now   ║
-║                                                           ║
-╚═══════════════════════════════════════════════════════════╝
-```
-
-Shows live metrics:
-- **Cases Scraped Today**: Total from all sessions (with thousands separator)
-- **Cases/sec**: Current scraping speed
-- **Scraping Sessions**: Number of research sessions today
-- **Tasks Processing Now**: Active AI work
-
-### 3. **Dynamic Header**
-Changes based on system state:
-- "**2 tasks** awaiting approval. **1 more** processing." (when action needed)
-- "**3 tasks** are being processed by AI agents." (when working)
-- "All caught up! **10 tasks** completed." (when idle)
-- "Loading task data..." (while fetching)
-
-### 4. **Error Handling**
-Yellow warning alert when API fails:
-```
-⚠️ Failed to connect to backend. Please ensure the API server is running.
-   Showing cached data. The system will retry automatically.
-   [×] Dismiss
-```
-- Auto-retry every 10 seconds
-- Falls back to mock data (graceful degradation)
-- Dismissible alert
-
-### 5. **Loading States**
-- Spinner on initial load
-- "Loading task data..." message
-- Prevents UI flash
+### Local Development
+- **SSH Access**: To AMD server (134.199.202.8)
+- **Local Ports**: 3000 (frontend), 9081 (backend tunnel)
+- **Browser**: Chrome/Firefox for dashboard
 
 ---
 
-## 🚀 How to Test It
+## ⚙️ Quick Setup (5 Minutes)
 
-### Quick Test (5 minutes):
+### 1. Start vLLM Server (AMD Server)
 
 ```bash
-# Terminal 1: Start Backend API
-cd backend
+# SSH into AMD server
+ssh amd-knights@134.199.202.8
+
+# Navigate to project
+cd ~/Paralegal
+
+# Start vLLM Docker container
+./AMD_server/setup/optimize_vllm_gpu.sh
+
+# Verify vLLM is running
+curl http://localhost:8000/health
+# Expected: {"status": "ok"}
+
+# Check model is loaded
+curl http://localhost:8000/v1/models
+# Expected: Saul-7B-Instruct-v1
+```
+
+**vLLM Configuration:**
+- Model: `Saul-7B-Instruct-v1`
+- Max context: 4096 tokens
+- GPU memory: 60% (115GB)
+- Precision: bfloat16 with FP8 KV cache
+- Port: 8000
+
+---
+
+### 2. Start Backend API (AMD Server)
+
+```bash
+# In another SSH terminal
+cd ~/Paralegal/backend
+
+# Activate Python environment
+pyenv shell 3.11.8
+
+# Install dependencies (first time only)
 pip install -r requirements.txt
+
+# Start FastAPI server
 python api_server.py
+```
 
-# Terminal 2: Test API
-curl http://localhost:8080/health | jq
-curl http://localhost:8080/stats | jq
+**Expected output:**
+```
+INFO:     Started server process
+INFO:     Uvicorn running on http://0.0.0.0:8081
+✅ Multi-agent research system loaded
+✅ RAG embeddings loaded successfully
+```
 
-# Create a legal research task
-curl -X POST http://localhost:8080/tasks/ingest \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "email",
-    "content": "Find medical malpractice cases with misdiagnosed appendicitis",
-    "priority": "high"
-  }' | jq
+**Backend Configuration:**
+- Port: 8081 (internal)
+- vLLM endpoint: http://localhost:8000
+- Database: PostgreSQL (paralegal_db)
+- Features: Multi-agent research, RAG search, 4-stage synthesis
 
-# Watch stats update as scraper works
-watch -n 2 "curl -s http://localhost:8080/stats | jq"
+---
 
-# Terminal 3: Start Frontend
-cd frontend
+### 3. SSH Tunnel (Local Machine)
+
+```bash
+# From your local machine, create SSH tunnel
+ssh -L 9081:localhost:8081 amd-knights@134.199.202.8
+
+# Keep this terminal open
+# Backend API now accessible at http://localhost:9081
+```
+
+**Test tunnel:**
+```bash
+# From local machine
+curl http://localhost:9081/health
+# Expected: {"status": "healthy", "timestamp": "..."}
+```
+
+---
+
+### 4. Start Frontend (Local Machine)
+
+```bash
+# From your local machine
+cd ~/Paralegal/frontend
+
+# Install dependencies (first time only)
 npm install
+
+# Start development server
 npm run dev
-
-# Open http://localhost:5173
-# Watch Dashboard auto-refresh every 10 seconds! 🎉
 ```
 
-### Automated Test:
+**Expected output:**
+```
+VITE v5.x.x ready in XXX ms
 
-```bash
-./test_integration.sh
+➜  Local:   http://localhost:3000/
+➜  Network: use --host to expose
 ```
 
-This script:
-1. ✅ Checks vLLM server (port 8000)
-2. ✅ Installs backend dependencies
-3. ✅ Starts API server
-4. ✅ Tests all endpoints
-5. ✅ Creates a legal research task
-6. ✅ Watches intelligent scraper work
-7. ✅ Shows final stats
+**Frontend Features:**
+- Real-time synthesis progress stepper (4 stages)
+- Material UI dashboard
+- Legal research interface
+- Live status updates
 
 ---
 
-## 🎬 Demo Script (3 minutes)
+## 🧪 Test End-to-End System
 
-### Option A: Backend Only (Simple)
+### Option 1: Web UI (Recommended)
 
-Perfect if you want to show the core innovation without UI complexity:
+1. Open browser: http://localhost:3000
+2. Navigate to "Legal Research" tab
+3. Enter query: "What is the liability standard for slip and fall cases at grocery stores?"
+4. Click "Search"
+5. Watch 4-stage synthesis progress:
+   - **Stage 1**: Organizing findings (0-30s)
+   - **Stage 2**: Writing sections (30-45s)
+   - **Stage 3**: Integration (45-75s)
+   - **Stage 4**: Quality check (75-90s)
+6. Review comprehensive memo (~5,700 chars)
+
+**Expected sections:**
+- Executive Summary
+- Legal Framework
+- Case Analysis (6 relevant cases)
+- Practical Guidance
+
+---
+
+### Option 2: API Testing
 
 ```bash
-# Start API
-cd backend && python api_server.py
+# Test health
+curl http://localhost:9081/health | jq
 
-# Show health
-curl http://localhost:8080/health | jq
-
-# Create task
-curl -X POST http://localhost:8080/tasks/ingest \
+# Create research task
+curl -X POST http://localhost:9081/tasks/ingest \
   -H "Content-Type: application/json" \
   -d '{
-    "source": "email",
-    "content": "Slip and fall at grocery store, wrist injury, Florida",
+    "source": "manual",
+    "content": "What is the liability standard for slip and fall cases at grocery stores?",
     "priority": "high"
   }' | jq
 
-# Watch progress (get task_id from above)
-watch -n 2 "curl -s http://localhost:8080/tasks/{TASK_ID} | jq"
+# Get task status (use task_id from response)
+curl http://localhost:9081/tasks/{task_id} | jq
 
-# Show stats
-curl http://localhost:8080/stats | jq
+# Watch for completion (status: "completed")
+watch -n 2 "curl -s http://localhost:9081/tasks/{task_id} | jq '.status'"
 ```
 
-**Talking Points:**
-- "Intelligent scraper searches 10.6M opinions"
-- "41.7 cases/sec peak performance"
-- "$0 cost using free CourtListener API"
-- "LLM generates optimized search queries"
-- "100 concurrent workers"
+**Performance Expectations:**
+- Query time: 150-200 seconds
+- Cases analyzed: 6 relevant cases
+- Memo length: 5,000-6,000 characters
+- Quality score: 7-8/10
 
-### Option B: Full Stack (Impressive)
+---
+---
 
-Show the complete system with beautiful UI:
+## 🔧 Troubleshooting
 
+### vLLM Server Not Running
+
+**Symptom**: `curl http://localhost:8000/health` fails
+
+**Solution**:
 ```bash
-# Start backend
-cd backend && python api_server.py
+# Check Docker container
+docker ps | grep vllm
 
-# Start frontend (new terminal)
-cd frontend && npm run dev
+# If not running, start it
+./AMD_server/setup/optimize_vllm_gpu.sh
 
-# Open browser: http://localhost:5173
+# Check logs
+docker logs $(docker ps -q --filter ancestor=rocm/vllm:latest)
 ```
 
-**Demo Flow:**
-1. Show Dashboard (empty state)
-2. Create task via curl (in terminal)
-3. Watch Dashboard update in real-time
-4. Point out scraper performance card
-5. Show task complete → awaiting approval
-6. Show final stats
-
-**Talking Points:**
-- "Real-time updates every 10 seconds"
-- "Material UI design system"
-- "Auto-refresh polling mechanism"
-- "Error recovery with fallback"
-- "Production-ready architecture"
-
 ---
 
-## 📁 What Got Updated
+### Backend API Errors
 
-### Modified Files:
-- ✅ `frontend/src/components/Dashboard.tsx` (168 lines changed)
-  - Added API state (stats, apiTasks, loading, error)
-  - Added useEffect with polling (10s interval)
-  - Updated renderQuickStats() to use real data
-  - Added scraper performance card
-  - Added error handling
-  - Added dynamic header
+**Symptom**: Backend crashes or returns 500 errors
 
-### New Files Created:
-- ✅ `test_integration.sh` - Automated test script (127 lines)
-- ✅ `DASHBOARD_INTEGRATION_COMPLETE.md` - Complete guide (300+ lines)
-- ✅ `ARCHITECTURE_CLARIFICATION.md` - DB vs API explanation
-- ✅ `DEMO_READY.md` - 15-minute demo prep guide
-- ✅ `QUICK_START.md` - This file!
-
-### Already Created (Ready to Use):
-- ✅ `backend/api_server.py` - FastAPI server (680 lines)
-- ✅ `backend/llm_client.py` - vLLM wrapper (212 lines)
-- ✅ `frontend/src/services/api.ts` - TypeScript client (310 lines)
-- ✅ `INTEGRATION_GUIDE.md` - Complete setup instructions
-- ✅ `quick_start_integration.sh` - Setup automation
-
----
-
-## 🎯 Success Checklist
-
-- [x] Backend API server created
-- [x] vLLM client wrapper implemented
-- [x] Intelligent scraper integrated
-- [x] FastAPI endpoints (health, stats, tasks, agents)
-- [x] Frontend API client (TypeScript)
-- [x] Dashboard component updated
-- [x] Real-time stats display
-- [x] Auto-refresh mechanism
-- [x] Error handling
-- [x] Loading states
-- [x] Scraper performance card
-- [x] Test script created
-- [x] Documentation complete
-- [x] Code committed to GitHub
-
-**ALL COMPLETE!** ✅
-
----
-
-## 💡 What Makes This Special
-
-### For Judges:
-1. **Real Innovation**: LLM-generated queries + intelligent scraping = 10-20x faster research
-2. **Free & Fast**: $0 cost, 41.7 cases/sec vs expensive databases
-3. **Production Ready**: Complete architecture, error handling, real-time updates
-4. **AMD Optimized**: Uses MI300X GPU (192GB VRAM) for Saul-7B legal AI
-
-### For Engineers:
-1. **Clean Architecture**: Separation of concerns (DB for docs, API for workflow)
-2. **Async Processing**: Background tasks with FastAPI
-3. **Type Safety**: TypeScript + Pydantic models
-4. **Polling Pattern**: Frontend auto-refresh without WebSockets
-5. **Error Recovery**: Graceful degradation with fallback data
-
-### For Business:
-1. **ROI**: 10-20x faster → more cases handled
-2. **Cost Savings**: $0 API vs $1000s for LexisNexis
-3. **Quality**: Human-in-the-loop approval ensures accuracy
-4. **Scalability**: Built for 10.6M+ documents, can grow
-
----
-
-## 🚧 Optional Next Steps (Not Required for Demo)
-
-If you have extra time:
-1. Connect InboxView to `getTasks()`
-2. Wire ApprovalQueue approve button to `approveTask()`
-3. Update AgentsView with real agent status
-4. Add task creation form in UI
-5. Add approval workflow in frontend
-
-**BUT** - The Dashboard integration is sufficient for a killer demo! 🔥
-
----
-
-## 🎊 You're Demo-Ready!
-
-**Minimum Viable Demo:**
+**Check**:
 ```bash
-./test_integration.sh
+# Verify vLLM is accessible
+curl http://localhost:8000/v1/models
+
+# Check Python environment
+pyenv shell 3.11.8
+python --version
+
+# Verify dependencies
+pip install -r requirements.txt
+
+# Check logs
+tail -f backend/logs/*.log
 ```
-
-**Recommended Demo:**
-```bash
-# Terminal 1
-cd backend && python api_server.py
-
-# Terminal 2  
-cd frontend && npm run dev
-
-# Browser
-http://localhost:5173
-```
-
-**Pro Demo:**
-- Show backend API (curl)
-- Show intelligent scraper working (watch command)
-- Show frontend Dashboard updating in real-time
-- Create task live
-- Watch it process
-- Show final stats with scraper metrics
 
 ---
 
-**🚀 GO SHOW OFF YOUR INTELLIGENT LEGAL RESEARCH SYSTEM! 🚀**
+### SSH Tunnel Issues
 
-Questions? Check:
-- `DEMO_READY.md` - 15-min demo preparation
-- `DASHBOARD_INTEGRATION_COMPLETE.md` - Complete guide  
-- `INTEGRATION_GUIDE.md` - Full setup instructions
-- `test_integration.sh` - Automated testing
+**Symptom**: `curl http://localhost:9081/health` fails from local machine
 
-**Everything is ready. You got this!** 💪
+**Solution**:
+```bash
+# Kill existing tunnel
+pkill -f "ssh.*9081:localhost:8081"
+
+# Restart tunnel
+ssh -L 9081:localhost:8081 amd-knights@134.199.202.8
+
+# Verify in another terminal
+curl http://localhost:9081/health
+```
+
+---
+
+### Frontend Not Connecting
+
+**Symptom**: Frontend shows "Failed to connect to backend"
+
+**Check**:
+1. SSH tunnel is running: `lsof -i :9081`
+2. Backend is running on server: `curl http://localhost:9081/health`
+3. Frontend .env file has correct API URL:
+   ```
+   VITE_API_URL=http://localhost:9081
+   ```
+
+---
+
+### Slow Query Performance
+
+**Symptom**: Queries taking >300 seconds
+
+**Diagnostics**:
+```bash
+# Check GPU usage on AMD server
+rocm-smi
+
+# Check vLLM load
+curl http://localhost:8000/health
+
+# Check backend logs for timeout errors
+tail -f backend/logs/*.log | grep "timeout"
+```
+
+**Solutions**:
+- Reduce max_cycles in `multi_agent_researcher.py` (currently 2)
+- Increase timeout values if network is slow
+- Check GPU isn't being used by other processes
+
+---
+
+### Database Connection Issues
+
+**Symptom**: "Failed to connect to database" errors
+
+**Solution**:
+```bash
+# Test database connection
+psql -h localhost -U paralegal_user -d paralegal_db
+
+# Password: hackathon2024
+
+# Verify RAG embeddings table
+\dt opinions_embeddings
+
+# Check opinion count
+SELECT COUNT(*) FROM opinions;
+# Expected: 10.6M+
+```
+
+---
+
+## 📊 System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     AMD Server (134.199.202.8)              │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌──────────────────┐         ┌─────────────────────────┐  │
+│  │  vLLM Docker     │         │  Backend API (FastAPI)  │  │
+│  │  Port: 8000      │◄────────│  Port: 8081             │  │
+│  │  Saul-7B Model   │         │  - Multi-agent research │  │
+│  │  GPU: 115GB      │         │  - RAG search           │  │
+│  └──────────────────┘         │  - 4-stage synthesis    │  │
+│                               └──────────┬──────────────┘  │
+│                                          │                  │
+│  ┌──────────────────┐                   │                  │
+│  │  PostgreSQL DB   │◄──────────────────┘                  │
+│  │  10.6M+ opinions │                                      │
+│  │  RAG embeddings  │                                      │
+│  └──────────────────┘                                      │
+└─────────────────────────────────────────────────────────────┘
+                                ▲
+                                │ SSH Tunnel (9081→8081)
+                                │
+┌─────────────────────────────────────────────────────────────┐
+│                     Local Machine                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌──────────────────┐         ┌─────────────────────────┐  │
+│  │  Browser         │◄────────│  Frontend (React/TS)    │  │
+│  │  localhost:3000  │         │  Port: 3000             │  │
+│  │                  │         │  - Material UI          │  │
+│  │                  │         │  - Synthesis stepper    │  │
+│  └──────────────────┘         │  - Real-time updates    │  │
+│                               └─────────────────────────┘  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📈 Performance Metrics
+
+### Multi-Agent Research Pipeline
+
+```
+Query → RAG Search (10-15s)
+  ↓
+Relevance Filter (1-2s)
+  ↓
+Cycle 1: 3 agents × 3 cases = 9 analyses (30-40s)
+  ↓
+Cycle 2: 3 agents × 3 cases = 9 analyses (30-40s)
+  ↓
+Stage 1: Organize findings (15-20s)
+  ↓
+Stage 2: Write sections in parallel (20-30s)
+  ↓
+Stage 3: Integration (20-30s)
+  ↓
+Stage 4: Quality check (15-20s)
+  ↓
+Total: ~179 seconds
+```
+
+### Resource Usage
+
+| Component | CPU | Memory | GPU | Network |
+|-----------|-----|--------|-----|---------|
+| vLLM | 10-20% | 8GB | 115GB (60%) | Low |
+| Backend | 5-10% | 2GB | - | Medium |
+| Frontend | 1-2% | 500MB | - | Low |
+| Database | 2-5% | 4GB | - | Low |
+
+---
+
+## 🎯 Next Steps
+
+1. **Review Quality Improvements**: [RESEARCH_QUALITY_IMPROVEMENTS.md](RESEARCH_QUALITY_IMPROVEMENTS.md)
+2. **Understand Performance**: [RESEARCH_PERFORMANCE_OPTIMIZATION.md](RESEARCH_PERFORMANCE_OPTIMIZATION.md)
+3. **Explore Architecture**: [docs/ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md)
+4. **Database Operations**: [docs/DATABASE_DOCUMENTATION.md](docs/DATABASE_DOCUMENTATION.md)
+5. **GPU Optimization**: [docs/GPU_OPTIMIZATION_GUIDE.md](docs/GPU_OPTIMIZATION_GUIDE.md)
+
+---
+
+## 📝 Configuration Files
+
+### Backend (.env)
+```bash
+# AMD_server/.env
+VLLM_BASE_URL=http://localhost:8000
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=paralegal_db
+DB_USER=paralegal_user
+DB_PASSWORD=hackathon2024
+```
+
+### Frontend (.env)
+```bash
+# frontend/.env
+VITE_API_URL=http://localhost:9081
+```
+
+### vLLM Docker
+```bash
+# Configured in: AMD_server/setup/optimize_vllm_gpu.sh
+# Model: Saul-7B-Instruct-v1
+# GPU memory: 60% (--gpu-memory-utilization 0.6)
+# Max context: 4096 (--max-model-len 4096)
+# Precision: bfloat16 (--dtype bfloat16)
+# KV cache: FP8 (--kv-cache-dtype fp8)
+```
+
+---
+
+## 🆘 Getting Help
+
+- **Documentation**: See [README.md](README.md) for full documentation index
+- **Issues**: Create GitHub issue with logs and error messages
+- **Logs**: Check `backend/logs/` for detailed error traces
+- **Health Checks**: Use `/health` endpoints on all services
+
+---
+
+**System Status**: ✅ Production Ready (v4.0 - October 26, 2025)
