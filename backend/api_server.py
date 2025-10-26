@@ -26,11 +26,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
-# Add project paths
+# Add project paths - add the parent directory so we can import AMD_server
 PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "AMD_server"))
-sys.path.insert(0, str(PROJECT_ROOT / "AMD_server" / "ml_pipeline"))
-sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+sys.path.insert(0, str(PROJECT_ROOT))  # This allows "from AMD_server..." to work
 
 # Import our components
 from llm_client import AMDLLMClient
