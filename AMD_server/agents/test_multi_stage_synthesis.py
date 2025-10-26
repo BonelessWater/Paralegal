@@ -142,7 +142,7 @@ async def test_multi_stage_synthesis():
     # Initialize LLM client
     logger.info("\n1. Initializing LLM client...")
     try:
-        llm_client = AMDLLMClient(base_url="http://localhost:8000/v1")
+        llm_client = AMDLLMClient(base_url="http://localhost:8000")  # Fixed: removed /v1
         logger.info("✓ LLM client initialized")
     except Exception as e:
         logger.error(f"✗ Failed to initialize LLM client: {e}")
