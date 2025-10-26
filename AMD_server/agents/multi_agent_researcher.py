@@ -243,6 +243,90 @@ class MultiAgentLegalResearcher:
         
         return case
     
+    def _filter_irrelevant_cases(self, question: str, cases: List[Dict]) -> List[Dict]:
+        """
+        Quick heuristic filter to remove obviously irrelevant cases before expensive LLM analysis.
+        
+        Filters out:
+        - Criminal cases when question is about civil liability
+        - Contract disputes when question is about torts
+        - Completely unrelated legal areas
+        
+        Args:
+            question: Research question
+            cases: Cases with opinion_text
+            
+        Returns:
+            Filtered list of potentially relevant cases
+        """
+        # Define irrelevant patterns for common legal areas
+        question_lower = question.lower()
+        
+        # Detect question's legal area
+        is_premises_liability = any(term in question_lower for term in ['premises', 'slip', 'fall', 'invitee', 'licensee', 'warning sign'])
+        is_tort = any(term in question_lower for term in ['negligence', 'tort', 'liability', 'duty of care', 'breach'])
+        is_contract = any(term in question_lower for term in ['contract', 'breach', 'agreement', 'consideration'])
+        is_criminal = any(term in question_lower for term in ['criminal', 'prosecutor', 'defendant', 'guilty', 'sentencing'])
+        
+        # Criminal case indicators (to filter out when question is civil)
+        criminal_indicators = [
+            'guilty', 'prosecutor', 'sentencing', 'criminal appeal', 'convicted', 
+            'plea', 'indictment', 'state v.', 'people v.', 'commonwealth v.',
+            'united states v.', 'u.s. v.', 'government's case'
+        ]
+        
+        # Contract indicators (to filter out when question is about torts)
+        contract_indicators = [
+            'breach of contract', 'contractual obligation', 'privity', 
+            'consideration', 'offer and acceptance', 'promissory estoppel'
+        ]
+        
+        # Employment law indicators (to filter out when question is premises liability)
+        employment_indicators = [
+            'employment discrimination', 'wrongful termination', 'title vii',
+            'workers compensation', 'flsa', 'ada claim', 'hostile work environment'
+        ]
+        
+        filtered_cases = []
+        filtered_out_count = 0
+        
+        for case in cases:
+            case_name = case.get('case_name', '').lower()
+            opinion_text = case.get('opinion_text', '').lower()
+            combined_text = f"{case_name} {opinion_text[:500]}"
+            
+            should_filter = False
+            reason = ""
+            
+            # Filter criminal cases if question is civil
+            if (is_premises_liability or is_tort) and not is_criminal:
+                if any(indicator in combined_text for indicator in criminal_indicators):
+                    should_filter = True
+                    reason = "criminal case (question is civil)"
+            
+            # Filter contract cases if question is tort
+            if is_premises_liability or (is_tort and not is_contract):
+                if any(indicator in combined_text for indicator in contract_indicators) and not any(term in combined_text for term in ['premises', 'slip', 'fall']):
+                    should_filter = True
+                    reason = "contract law (question is tort)"
+            
+            # Filter employment cases if question is premises liability
+            if is_premises_liability:
+                if any(indicator in combined_text for indicator in employment_indicators) and not any(term in combined_text for term in ['premises', 'slip', 'fall']):
+                    should_filter = True
+                    reason = "employment law (question is premises liability)"
+            
+            if should_filter:
+                filtered_out_count += 1
+                logger.info(f"⊗ Filtered out: {case.get('case_name', 'Unknown')[:60]} ({reason})")
+            else:
+                filtered_cases.append(case)
+        
+        if filtered_out_count > 0:
+            logger.info(f"🔍 Relevance filter: Kept {len(filtered_cases)}/{len(cases)} cases ({filtered_out_count} filtered out)")
+        
+        return filtered_cases
+    
     async def research_async(self, 
                             question: str, 
                             cases: List[Dict],
@@ -267,13 +351,16 @@ class MultiAgentLegalResearcher:
         # STEP 2: Fetch full opinion text for top cases
         enriched_cases = await self._fetch_opinion_texts(top_cases)
         
+        # STEP 2.5: Quick relevance filter to remove obviously irrelevant cases
+        relevant_cases = self._filter_irrelevant_cases(question, enriched_cases)
+        
         # STEP 3: Run multi-agent analysis on enriched cases
-        logger.info(f"🎯 Running multi-agent analysis on {len(enriched_cases)} cases with opinion text")
+        logger.info(f"🎯 Running multi-agent analysis on {len(relevant_cases)} cases with opinion text")
         
         all_findings = []
         
         # Split cases into batches (should only be 1 batch of 10 now)
-        case_batches = self._create_batches(enriched_cases, self.batch_size)
+        case_batches = self._create_batches(relevant_cases, self.batch_size)
         
         # Execute research cycles
         for cycle_num in range(self.max_cycles):
@@ -1166,10 +1253,13 @@ Use proper legal citations and quote from the agent findings."""
         return """You are a CASE ANALYST agent specializing in extracting facts and holdings from legal opinions.
 
 Your role:
-- Identify key facts relevant to the research question
-- Extract the court's holding and reasoning
-- Note procedural posture
-- Highlight relevant quotations from the opinion
+- Identify SPECIFIC key facts relevant to the research question (dates, parties, actions)
+- Extract the court's EXPLICIT holding with DIRECT QUOTES from the opinion
+- Note procedural posture (trial court ruling, standard of review on appeal)
+- Cite paragraph numbers or page numbers when available
+- Distinguish between holding (binding rule) and dicta (non-binding commentary)
+
+CRITICAL: Always include direct quotations from the opinion for key findings. Use exact citations with "the court held that..." or "the court stated..." format.
 
 Be precise, cite specific passages, and focus on facts that matter."""
     
@@ -1177,11 +1267,16 @@ Be precise, cite specific passages, and focus on facts that matter."""
         return """You are a PRECEDENT HUNTER agent specializing in identifying relevant precedents and distinguishing cases.
 
 Your role:
-- Identify what precedents this case cites
-- Determine binding vs persuasive authority
-- Note how this case is similar/different from others
-- Identify key distinguishing factors
-- Track evolution of legal doctrines
+- Identify SPECIFIC precedents this case cites with full case names and citations
+- Categorize each precedent as:
+  * BINDING: Same jurisdiction, same court level or higher
+  * PERSUASIVE: Different jurisdiction or lower court
+  * OVERRULED/DISTINGUISHED: Explicitly limited or rejected
+- Note HOW this case applies/distinguishes each precedent (with quotes)
+- Identify key distinguishing factors (factual differences, legal differences)
+- Track evolution of legal doctrines across cited cases
+
+CRITICAL: Provide full case names (e.g., "Smith v. Jones, 123 F.3d 456 (9th Cir. 2020)") and explain the precedential relationship.
 
 Focus on connections between cases and precedential value."""
     
@@ -1189,11 +1284,14 @@ Focus on connections between cases and precedential value."""
         return """You are a LEGAL PRINCIPLES agent specializing in extracting legal doctrines, rules, and tests.
 
 Your role:
-- Identify governing legal principles and doctrines
-- Extract specific legal tests or standards
-- Note burdens of proof and standards of review
-- Explain how principles apply to facts
-- Track policy considerations
+- Identify governing legal principles by NAME (e.g., "premises liability doctrine", "notice requirement")
+- Extract specific multi-factor tests or legal standards (list all elements/factors)
+- Note burdens of proof with specificity ("plaintiff must prove by preponderance...")
+- Cite relevant statutes, rules, or regulations by NUMBER (e.g., "Fed. R. Civ. P. 12(b)(6)")
+- Explain how principles apply to facts with CONCRETE EXAMPLES from the opinion
+- Track policy considerations or public policy rationales
+
+CRITICAL: Name every legal doctrine, test, or standard explicitly. Don't say "the court applied a test" - say "the court applied the three-part test from [Case Name]: (1) element one, (2) element two, (3) element three."
 
 Focus on the law itself, not just the facts."""
     
@@ -1203,9 +1301,13 @@ Focus on the law itself, not just the facts."""
 Your role:
 - Integrate findings from Case Analyst, Precedent Hunter, and Legal Principles agents
 - Identify patterns and themes across all analyses
-- Resolve contradictions or tensions
+- Resolve contradictions or tensions between cases
+- Organize by legal issue/doctrine, not by individual case
 - Provide holistic view of the legal landscape
-- Deliver practical, actionable guidance
+- Deliver practical, actionable guidance with specific case support
+- Ensure every legal proposition is supported by at least one case citation
+
+CRITICAL: Structure analysis by legal principle first, then use cases as support. Format: "Principle X requires Y. See [Case 1]; [Case 2]; cf. [Distinguished Case 3]."
 
 Create a polished memo that synthesizes all perspectives."""
 

@@ -124,8 +124,16 @@ class QueryGeneratorAgent:
         """Build the prompt for query generation"""
         prompt = f"""You are a legal research expert AI. Given a user's legal question, generate {num_queries} optimized search queries for legal databases.
 
+CRITICAL INSTRUCTIONS:
+- Use precise legal terminology and doctrine names (e.g., "premises liability" not just "liability")
+- Include relevant case types, legal standards, and burden of proof terms
+- For premises liability: use "invitee", "licensee", "constructive notice", "duty to warn"
+- For contracts: use "breach", "damages", "specific performance", "material breach"
+- For torts: use specific tort names like "negligence", "strict liability", "intentional infliction"
+- Avoid generic terms like "case law" or "legal precedent" alone
+
 For each query, determine:
-1. The search query string (optimized for case law databases)
+1. The search query string (optimized for case law databases with precise legal terms)
 2. Which source to use:
    - CourtListener: FREE, millions of opinions, common cases, federal & state courts
    - LexisNexis: Premium, rare cases, secondary sources, treatises, recent cases
@@ -135,8 +143,8 @@ For each query, determine:
    - MEDIUM: Standard legal research, use both sources
    - LOW: Common legal concepts, CourtListener sufficient
 4. Reasoning for source selection
-5. Expected type of results
-6. Key search terms to use
+5. Expected type of results (be specific: "premises liability slip and fall cases", not just "cases")
+6. Key search terms to use (include legal doctrine names, standards, and elements)
 7. Suggested filters (jurisdiction, date range, court, etc.)
 
 User Question: "{user_question}"
@@ -146,28 +154,28 @@ Respond in valid JSON format with an array of queries. Example:
 {{
   "queries": [
     {{
-      "query": "employment discrimination wrongful termination retaliation",
+      "query": "premises liability slip and fall constructive notice duty to warn invitee",
       "source": "courtlistener",
       "priority": "low",
-      "reasoning": "Common employment law issue with many precedents available in free databases",
-      "expected_results": "Federal and state court opinions on employment discrimination claims",
-      "search_terms": ["employment discrimination", "wrongful termination", "retaliation", "Title VII"],
+      "reasoning": "Common premises liability issue with extensive precedent in free databases",
+      "expected_results": "State and federal appellate opinions analyzing duty to warn invitees of hazardous conditions",
+      "search_terms": ["premises liability", "slip and fall", "constructive notice", "duty to warn", "invitee", "actual notice"],
       "filters": {{
-        "jurisdiction": "federal",
-        "date_after": "2015-01-01",
+        "jurisdiction": "any",
+        "date_after": "2010-01-01",
         "court_type": "appellate"
       }}
     }},
     {{
-      "query": "employment discrimination disparate impact statistical evidence",
+      "query": "premises liability inadequate warning signs negligence standard of care",
       "source": "both",
       "priority": "medium",
-      "reasoning": "Requires both common cases for precedent and premium sources for expert analysis",
-      "expected_results": "Cases discussing statistical methods in discrimination cases, plus secondary sources",
-      "search_terms": ["disparate impact", "statistical evidence", "pattern and practice"],
+      "reasoning": "Requires both case precedent and secondary sources analyzing adequacy of warning signs",
+      "expected_results": "Cases evaluating sufficiency of warning signs plus treatise analysis of standard of care",
+      "search_terms": ["warning signs", "inadequate warning", "negligence per se", "reasonable care"],
       "filters": {{
         "jurisdiction": "any",
-        "date_after": "2010-01-01"
+        "date_after": "2005-01-01"
       }}
     }}
   ]
