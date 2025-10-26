@@ -316,6 +316,10 @@ async def process_task_background(task_id: str):
             # Run intelligent research
             research_result = await intelligent_scraper.research_question_async(task.content)
             
+            # DEBUG: Log what we actually got back
+            logger.info(f"🔍 DEBUG: research_result type = {type(research_result)}")
+            logger.info(f"🔍 DEBUG: research_result content = {research_result}")
+            
             # Format response
             total_cases = research_result.get('total_cases_found', 0)
             ai_response = f"""Based on research across {total_cases} legal cases:
@@ -360,7 +364,9 @@ This research was powered by our intelligent scraping system with 100 concurrent
         logger.info(f"✅ Task {task_id} processed in {processing_time:.2f}s")
         
     except Exception as e:
+        import traceback
         logger.error(f"❌ Task processing failed: {e}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
         task = tasks_db.get(task_id)
         if task:
             task.status = 'failed'
