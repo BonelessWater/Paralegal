@@ -289,9 +289,9 @@ class MultiAgentLegalResearcher:
         
         # Tax law indicators (to filter out when question is not tax-related)
         tax_indicators = [
-            'internal revenue code', 'irc', 'tax court', 'commissioner of internal revenue',
-            'deficiency', 'taxable income', 'deduction', 'irs', 'income tax return',
-            'additions to tax', 'accuracy-related penalty', 'failure to file'
+            'internal revenue code', 'irc section', 'tax court', 'commissioner of internal revenue',
+            'tax deficiency', 'taxable income', 'tax deduction', 'irs audit', 'income tax return',
+            'additions to tax', 'accuracy-related penalty', 'failure to file return'
         ]
         
         filtered_cases = []
@@ -1107,7 +1107,7 @@ VALIDATION CHECKLIST (internal use only - do not include in output):
 
 CORRECTED MEMO (output only the memo text, nothing else):"""
 
-        response = await self._ask_llm(prompt, max_tokens=3000, temperature=0.2, timeout=90)  # Increased from 2000 to avoid truncation
+        response = await self._ask_llm(prompt, max_tokens=2000, temperature=0.2, timeout=90)  # Reduced from 3000 to fit within 4096 context
         
         # Extra safety: strip any common instruction artifacts
         response = response.strip()
