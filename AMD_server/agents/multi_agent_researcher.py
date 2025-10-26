@@ -319,22 +319,27 @@ class MultiAgentLegalResearcher:
             'research_cycles': [self._cycle_to_dict(c) for c in self.research_cycles]
         }
     
-    async def _run_agent_cycle(self,
-                               question: str,
-                               cases: List[Dict],
+    async def _run_agent_cycle(self, 
+                               question: str, 
+                               cases: List[Dict], 
                                cycle_num: int,
                                previous_findings: List[AgentFinding]) -> List[AgentFinding]:
-        """Run all specialized agents on a batch of cases"""
+        """Run all specialized agents on each case individually (one case per agent call)"""
         
         findings = []
         
-        # Run agents in parallel
-        tasks = [
-            self._run_case_analyst(question, cases, cycle_num),
-            self._run_precedent_hunter(question, cases, cycle_num, previous_findings),
-            self._run_legal_principles(question, cases, cycle_num)
-        ]
+        # Process each case individually with all agents in parallel
+        # This keeps prompts small: 1 case + agent instructions = ~2000 chars
+        tasks = []
+        for case in cases[:5]:  # Top 5 cases per cycle
+            case_text = self._get_case_text(case)
+            if not case_text:
+                continue
+            
+            # Run all 3 agents on this ONE case in parallel
+            tasks.append(self._analyze_single_case(question, case, case_text, cycle_num, previous_findings))
         
+        # Execute all case analyses in parallel
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Collect findings
@@ -348,6 +353,161 @@ class MultiAgentLegalResearcher:
         
         return findings
     
+    async def _analyze_single_case(self, 
+                                   question: str, 
+                                   case: Dict, 
+                                   case_text: str,
+                                   cycle: int,
+                                   previous_findings: List[AgentFinding]) -> List[AgentFinding]:
+        """Run all agents on a SINGLE case in parallel to minimize context per prompt"""
+        
+        findings = []
+        
+        # Run all 3 agents on this one case simultaneously
+        tasks = [
+            self._run_case_analyst_single(question, case, case_text, cycle),
+            self._run_precedent_hunter_single(question, case, case_text, cycle, previous_findings),
+            self._run_legal_principles_single(question, case, case_text, cycle)
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Single case analysis error: {result}")
+            elif result:
+                findings.append(result)
+        
+        return findings
+    
+    async def _run_case_analyst_single(self, question: str, case: Dict, case_text: str, cycle: int) -> AgentFinding:
+        """Case Analyst: Extract facts and holdings from ONE case"""
+        try:
+            prompt = f"""{self.agent_prompts[AgentRole.CASE_ANALYST]}
+
+CASE TO ANALYZE:
+{case.get('case_name', 'Unknown')}
+Citation: {case.get('citation', 'N/A')}
+Court: {case.get('court', 'Unknown')}
+
+OPINION EXCERPT:
+{case_text[:1500]}
+
+RESEARCH QUESTION:
+{question}
+
+Analyze this case and extract:
+1. Key facts relevant to the research question
+2. The court's holding
+3. The reasoning
+4. How it relates to the research question
+
+Be specific and quote the opinion."""
+
+            response = await self._ask_llm(prompt, max_tokens=800)
+            
+            return AgentFinding(
+                agent_role=AgentRole.CASE_ANALYST,
+                cycle=cycle,
+                case_name=case.get('case_name', 'Unknown'),
+                finding=response,
+                confidence=0.8,
+                supporting_text=case_text[:500]
+            )
+            
+        except Exception as e:
+            logger.error(f"Case analyst error for {case.get('case_name')}: {e}")
+            return None
+    
+    async def _run_precedent_hunter_single(self, 
+                                          question: str, 
+                                          case: Dict,
+                                          case_text: str,
+                                          cycle: int,
+                                          previous_findings: List[AgentFinding]) -> AgentFinding:
+        """Precedent Hunter: Identify relevant precedents from ONE case"""
+        try:
+            # Build minimal context from previous findings (max 3 to keep prompt small)
+            previous_context = ""
+            if previous_findings:
+                prev_precedents = [f for f in previous_findings if f.agent_role == AgentRole.PRECEDENT_HUNTER][:3]
+                if prev_precedents:
+                    previous_context = "\n\nPREVIOUSLY IDENTIFIED:\n"
+                    for f in prev_precedents:
+                        previous_context += f"- {f.case_name}: {f.finding[:80]}...\n"
+            
+            prompt = f"""{self.agent_prompts[AgentRole.PRECEDENT_HUNTER]}
+
+CASE TO ANALYZE:
+{case.get('case_name', 'Unknown')}
+Citation: {case.get('citation', 'N/A')}
+
+OPINION EXCERPT:
+{case_text[:1500]}
+
+RESEARCH QUESTION:
+{question}
+{previous_context}
+
+Identify:
+1. What precedents does this case cite?
+2. How is this case similar/different from others?
+3. What makes this case binding or persuasive?
+4. Key distinguishing factors"""
+
+            response = await self._ask_llm(prompt, max_tokens=700)
+            
+            return AgentFinding(
+                agent_role=AgentRole.PRECEDENT_HUNTER,
+                cycle=cycle,
+                case_name=case.get('case_name', 'Unknown'),
+                finding=response,
+                confidence=0.75,
+                supporting_text=case_text[:500]
+            )
+            
+        except Exception as e:
+            logger.error(f"Precedent hunter error for {case.get('case_name')}: {e}")
+            return None
+    
+    async def _run_legal_principles_single(self, question: str, case: Dict, case_text: str, cycle: int) -> AgentFinding:
+        """Legal Principles Agent: Extract doctrines from ONE case"""
+        try:
+            prompt = f"""{self.agent_prompts[AgentRole.LEGAL_PRINCIPLES]}
+
+CASE TO ANALYZE:
+{case.get('case_name', 'Unknown')}
+
+OPINION EXCERPT:
+{case_text[:1500]}
+
+RESEARCH QUESTION:
+{question}
+
+Extract:
+1. What legal principles/doctrines are discussed?
+2. What rules or tests does the court apply?
+3. What standards of review or burdens of proof?
+4. How do these principles apply to the question?
+
+Quote specific passages."""
+
+            response = await self._ask_llm(prompt, max_tokens=700)
+            
+            return AgentFinding(
+                agent_role=AgentRole.LEGAL_PRINCIPLES,
+                cycle=cycle,
+                case_name=case.get('case_name', 'Unknown'),
+                finding=response,
+                confidence=0.85,
+                supporting_text=case_text[:500]
+            )
+            
+        except Exception as e:
+            logger.error(f"Legal principles error for {case.get('case_name')}: {e}")
+            return None
+    
+    # OLD BATCH METHODS - DEPRECATED (kept for reference, can be removed later)
     async def _run_case_analyst(self, question: str, cases: List[Dict], cycle: int) -> List[AgentFinding]:
         """Case Analyst: Extract facts and holdings from cases"""
         logger.debug(f"  🔍 Case Analyst analyzing {len(cases)} cases...")
@@ -605,10 +765,6 @@ Use proper legal citations and quote from the agent findings."""
             logger.error(f"Prompt length: {len(prompt)} chars")
             logger.error(f"Prompt preview: {prompt[:200]}...")
             return ""
-            
-        except Exception as e:
-            logger.error(f"LLM error: {e}")
-            return f"[Error: {str(e)}]"
     
     def _create_batches(self, cases: List[Dict], batch_size: int) -> List[List[Dict]]:
         """Split cases into batches"""
