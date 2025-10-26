@@ -1048,7 +1048,7 @@ OUTPUT FORMAT:
 
 Write the complete integrated memo now:"""
 
-        response = await self._ask_llm(prompt, max_tokens=1500, temperature=0.4, timeout=90)  # Reduced from 2000
+        response = await self._ask_llm(prompt, max_tokens=2500, temperature=0.4, timeout=90)  # Increased from 1500 to avoid truncation
         return response.strip()
     
     async def _quality_check_memo(self, memo: str, findings: List[AgentFinding]) -> str:
@@ -1090,7 +1090,7 @@ VALIDATION CHECKLIST (internal use only - do not include in output):
 
 CORRECTED MEMO (output only the memo text, nothing else):"""
 
-        response = await self._ask_llm(prompt, max_tokens=2000, temperature=0.2, timeout=90)  # Reduced from 3500, low temp for careful review
+        response = await self._ask_llm(prompt, max_tokens=3000, temperature=0.2, timeout=90)  # Increased from 2000 to avoid truncation
         
         # Extra safety: strip any common instruction artifacts
         response = response.strip()
