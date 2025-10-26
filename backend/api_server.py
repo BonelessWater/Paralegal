@@ -42,7 +42,7 @@ from AMD_server.agents.legal_researcher_agent import LegalResearcherAgent
 from AMD_server.agents.evidence_sorter_agent import EvidenceSorterAgent
 
 # Import intelligent scraping system
-from orchestrator import ScrapingOrchestrator
+from AMD_server.ml_pipeline.orchestrator import ScrapingOrchestrator
 
 # Configure logging
 logging.basicConfig(
