@@ -31,3 +31,5 @@ scraper/kaggle_datasets/
 *.pyc
 
 saul-7b-instruct/
+
+.cache

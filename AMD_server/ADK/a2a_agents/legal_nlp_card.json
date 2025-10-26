@@ -1,0 +1,11 @@
+{
+  "name": "LegalNLPAgent",
+  "version": "0.1.0",
+  "endpoint": "http://localhost:8012/a2a/task",
+  "protocol": "a2a-lite",
+  "skills": [
+    { "name": "legal_summarize", "input_schema": { "text": "string" } },
+    { "name": "issue_spot", "input_schema": { "text": "string" } },
+    { "name": "bluebook_citations", "input_schema": { "text": "string" } }
+  ]
+}

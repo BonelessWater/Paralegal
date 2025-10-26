@@ -1,0 +1,7 @@
+{
+  "name": "RetrieverAgent",
+  "version": "0.1.0",
+  "endpoint": "http://localhost:8011/a2a/task",
+  "protocol": "a2a-lite",
+  "skills": [{ "name": "retrieve", "input_schema": { "query": "string", "documents": "array", "top_k": "int" } }]
+}

@@ -1,689 +1,349 @@
-# File: paralegal_research_adk.py
-"""
-Paralegal Research ADK Architecture
-Uses vLLM-served Saul-7B for legal research tasks
-Includes orchestrator with parallel agent execution
-"""
-
+# ADK/orchestrator.py
 from __future__ import annotations
-import os
-import sys
-import json
-import argparse
-import asyncio
-from typing import List, Dict, Optional, Any
-from dataclasses import dataclass, asdict
-from datetime import datetime
-import dspy
-from dotenv import load_dotenv
+import argparse, asyncio, json, os, re, time, math
+from typing import Any, Dict, List, Tuple
+from openai import OpenAI
 
-# Load environment variables
-load_dotenv()
+# Import all agents from the agents module
+from basic_agents.agents import (
+    AVAILABLE_AGENTS,          # parallel skills registry with all agents
+    AgentInput,                # type for agent inputs
+    saul_complete,             # shared completion function
+)
 
+# --------- tiny context reranker (unchanged) ---------
+def _tok(s: str) -> List[str]:
+    return [w.lower() for w in re.findall(r"[A-Za-z0-9_]+", s)]
 
-# ========================== CONFIGURATION ==========================
+def rerank_context(query: str, docs: List[Dict[str,Any]], top_k: int=5, max_chars: int=8000) -> str:
+    if not docs: return ""
+    q = _tok(query); N = len(docs)
+    df: Dict[str,int] = {}
+    for d in docs:
+        toks = set(_tok(d.get("text","")))
+        for t in set(q):
+            if t in toks: df[t] = df.get(t,0)+1
+    avg_len = sum(len(_tok(d.get("text",""))) for d in docs)/max(1,N)
+    scored: List[Tuple[float, Dict[str,Any]]] = []
+    for d in docs:
+        toks = _tok(d.get("text","")); L = len(toks) or 1
+        tf: Dict[str,int] = {}
+        for t in toks: tf[t] = tf.get(t,0)+1
+        s = 0.0
+        for t in q:
+            idf = math.log((N - df.get(t,0) + 0.5)/(df.get(t,0) + 0.5) + 1.0)
+            s += idf * (tf.get(t,0)*(1.2+1)) / (tf.get(t,0) + 1.2*(1 - 0.75 + 0.75*L/avg_len))
+        scored.append((s,d))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    chunks = []
+    for s,d in scored[:top_k]:
+        meta = d.get("meta",{})
+        chunks.append(f"[score={s:.2f}] {meta.get('id', d.get('id','doc'))} :: {d.get('text','')}")
+    ctx = "\n\n---\n\n".join(chunks)
+    return ctx if len(ctx)<=max_chars else ctx[:max_chars//2] + "\n\n[...]\n\n" + ctx[-max_chars//2:]
 
-class SaulConfig:
-    """Configuration for vLLM-served Saul-7B"""
-    def __init__(
-        self,
-        api_key: str = "dummy",
-        model: str = "Equall/Saul-7B-Instruct-v1",
-        temperature: float = 0.2,
-        max_tokens: int = 1024,
-        api_base: str = "http://localhost:8000/v1"
-    ):
-        self.api_key = api_key
-        self.model = model
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-        self.api_base = api_base
+# --------- Saul client for final synthesis ---------
+SAUL_BASE_URL = os.getenv("SAUL_BASE_URL", "http://localhost:8000/v1")
+SAUL_MODEL    = os.getenv("SAUL_MODEL", "Equall/Saul-7B-Instruct-v1")
+_client = OpenAI(base_url=SAUL_BASE_URL, api_key=os.getenv("SAUL_API_KEY","dummy"))
 
+def saul_complete_sync(prompt: str, max_tokens: int = 650, temperature: float = 0.15) -> str:
+    r = _client.completions.create(model=SAUL_MODEL, prompt=prompt, max_tokens=max_tokens, temperature=temperature)
+    return (r.choices[0].text or "").strip()
 
-def configure_dspy(cfg: SaulConfig) -> None:
-    """Configure DSPy with vLLM-served Saul-7B"""
-    provider_key = f"openai/{cfg.model}"
-    lm_kwargs = {
-        "api_key": cfg.api_key,
-        "temperature": cfg.temperature,
-        "max_tokens": cfg.max_tokens,
-        "api_base": cfg.api_base,
-    }
-    lm = dspy.LM(provider_key, **lm_kwargs)
-    dspy.configure(lm=lm)
-
-def _as_text(x) -> str:
-    """Coerce DSPy fields (which may be None/dict/list) into a string."""
-    if x is None:
-        return ""
-    if isinstance(x, (str, int, float)):
-        return str(x)
-    try:
-        return json.dumps(x, ensure_ascii=False)
-    except Exception:
-        return str(x)
-
-def _safe_pick(pred, *field_names) -> dict:
+# --------- Simple planner (no external plan_agent dependency) ---------
+async def simple_planner(task: Dict[str,Any], available_skills: List[str]) -> Dict[str,Any]:
     """
-    Safely extract output fields from a DSPy prediction.
-    Any missing/None field becomes "" so callers never explode.
+    Simple heuristic planner that selects agents based on task content.
+    Returns: {"skills": [...], "plan": "..."}
     """
-    out = {}
-    for name in field_names:
-        val = getattr(pred, name, "") if pred is not None else ""
-        out[name] = _as_text(val)
-    return out
-
-
-# ========================== AGENT SIGNATURES ==========================
-
-class DocumentAnalysisSignature(dspy.Signature):
-    """Analyze client documents for relevant information"""
-    case_brief = dspy.InputField(desc="Brief description of the case and legal issues")
-    document_list = dspy.InputField(desc="List of available documents with brief descriptions")
-    relevant_documents = dspy.OutputField(desc="Documents most relevant to the case with reasoning")
-    key_findings = dspy.OutputField(desc="Key facts and information extracted from documents")
-    missing_information = dspy.OutputField(desc="Information gaps that need to be addressed")
-
-
-class CaseLawResearchSignature(dspy.Signature):
-    """Research relevant case law and precedents"""
-    legal_issue = dspy.InputField(desc="Specific legal issue or question to research")
-    jurisdiction = dspy.InputField(desc="Relevant jurisdiction (state, federal, circuit)")
-    case_precedents = dspy.OutputField(desc="Relevant case precedents with citations and holdings")
-    applicable_standards = dspy.OutputField(desc="Legal standards and tests that apply")
-    distinguishing_factors = dspy.OutputField(desc="Factors that may distinguish this case")
-
-
-class StatutoryResearchSignature(dspy.Signature):
-    """Research statutes and regulations"""
-    legal_area = dspy.InputField(desc="Area of law (e.g., contract, tort, criminal)")
-    jurisdiction = dspy.InputField(desc="Relevant jurisdiction")
-    search_terms = dspy.InputField(desc="Specific terms or concepts to search")
-    relevant_statutes = dspy.OutputField(desc="Applicable statutes with citations and text")
-    regulatory_framework = dspy.OutputField(desc="Relevant regulations and administrative rules")
-    statutory_interpretation = dspy.OutputField(desc="How statutes apply to the case")
-
-
-class CitationExtractionSignature(dspy.Signature):
-    """Extract and verify legal citations"""
-    raw_text = dspy.InputField(desc="Text containing legal citations")
-    case_citations = dspy.OutputField(desc="Extracted case citations with proper format")
-    statute_citations = dspy.OutputField(desc="Extracted statute citations with proper format")
-    secondary_sources = dspy.OutputField(desc="Law review articles, treatises, etc.")
-    citation_errors = dspy.OutputField(desc="Formatting errors or incomplete citations")
-
-
-class LegalMemorandomSignature(dspy.Signature):
-    """Synthesize research into a legal memorandum"""
-    case_brief = dspy.InputField(desc="Overview of the case and issues")
-    research_findings = dspy.InputField(desc="Compiled research from all agents")
-    issue_statement = dspy.OutputField(desc="Clear statement of legal issues")
-    brief_answer = dspy.OutputField(desc="Concise answer to the legal question")
-    analysis = dspy.OutputField(desc="Detailed legal analysis with citations")
-    conclusion = dspy.OutputField(desc="Conclusion and recommendations")
-
-
-class DiscoveryAnalysisSignature(dspy.Signature):
-    """Analyze documents for discovery purposes"""
-    case_theory = dspy.InputField(desc="Theory of the case and what to prove")
-    document_collection = dspy.InputField(desc="Collection of documents to review")
-    privileged_documents = dspy.OutputField(desc="Documents that may be privileged")
-    responsive_documents = dspy.OutputField(desc="Documents responsive to discovery requests")
-    key_evidence = dspy.OutputField(desc="Documents containing key evidence")
-    redaction_recommendations = dspy.OutputField(desc="Recommendations for redactions")
-
-
-# ========================== SPECIALIZED AGENTS ==========================
-
-class DocumentAnalysisAgent(dspy.Module):
-    """Analyzes client documents and extracts relevant information"""
+    issue = task.get("issue", "").lower()
+    raw_text = task.get("raw_text", "").lower()
+    terms = task.get("terms", "").lower()
     
-    def __init__(self):
-        super().__init__()
-        self.analyze = dspy.ChainOfThought(DocumentAnalysisSignature)
+    selected_skills = []
+    plan_parts = []
     
-    # DocumentAnalysisAgent
-    def forward(self, case_brief: str, document_list: str) -> Dict[str, Any]:
-        pred = None
-        try:
-            pred = self.analyze(case_brief=case_brief, document_list=document_list)
-        except Exception as e:
-            # Keep going; we'll return structured error fields below
-            pass
-
-        fields = _safe_pick(pred, "relevant_documents", "key_findings", "missing_information")
-        return {
-            "agent_name": "document_analysis",
-            **fields,
-            "timestamp": datetime.now().isoformat()
-        }
-
-
-
-class CaseLawResearchAgent(dspy.Module):
-    """Researches case law and precedents"""
+    # Always include case law and statutes for legal research
+    if "case" in issue or "precedent" in issue or "law" in issue:
+        selected_skills.append("case_law")
+        plan_parts.append("Research relevant case law")
     
-    def __init__(self):
-        super().__init__()
-        self.research = dspy.ChainOfThought(CaseLawResearchSignature)
+    if "statute" in issue or "regulatory" in issue or "code" in issue or terms:
+        selected_skills.append("statutes")
+        plan_parts.append("Research applicable statutes")
     
-    # CaseLawResearchAgent
-    def forward(self, legal_issue: str, jurisdiction: str) -> Dict[str, Any]:
-        pred = None
-        try:
-            pred = self.research(legal_issue=legal_issue, jurisdiction=jurisdiction)
-        except Exception:
-            pass
-
-        fields = _safe_pick(pred, "case_precedents", "applicable_standards", "distinguishing_factors")
-        return {
-            "agent_name": "case_law_research",
-            **fields,
-            "timestamp": datetime.now().isoformat()
-        }
-
-
-
-class StatutoryResearchAgent(dspy.Module):
-    """Researches statutes and regulations"""
+    # Add citations if raw_text contains citation-like patterns
+    if raw_text and any(x in raw_text for x in ["v.", "§", "u.s.", "f.", "so."]):
+        selected_skills.append("citations")
+        plan_parts.append("Extract and normalize citations")
     
-    def __init__(self):
-        super().__init__()
-        self.research = dspy.ChainOfThought(StatutoryResearchSignature)
+    # Contract-related
+    if "contract" in issue or "agreement" in issue:
+        selected_skills.append("contract_review")
+        plan_parts.append("Review contract terms and risks")
     
-    def forward(self, legal_area: str, jurisdiction: str, search_terms: str) -> Dict[str, Any]:
-        pred = None
-        try:
-            pred = self.research(legal_area=legal_area, jurisdiction=jurisdiction, search_terms=search_terms)
-        except Exception:
-            pass
-
-        fields = _safe_pick(pred, "relevant_statutes", "regulatory_framework", "statutory_interpretation")
-        return {
-            "agent_name": "statutory_research",
-            **fields,
-            "timestamp": datetime.now().isoformat()
-        }
-
-
-class CitationExtractionAgent(dspy.Module):
-    """Extracts and verifies legal citations"""
+    # Fact-based analysis
+    if "fact" in issue or raw_text:
+        selected_skills.append("fact_extraction")
+        plan_parts.append("Extract material facts")
     
-    def __init__(self):
-        super().__init__()
-        self.extract = dspy.ChainOfThought(CitationExtractionSignature)
+    # Timeline creation
+    if "timeline" in issue or "chronolog" in issue or "sequence" in issue:
+        selected_skills.append("timeline")
+        plan_parts.append("Create chronological timeline")
     
-    def forward(self, raw_text: str) -> Dict[str, Any]:
-        pred = None
-        try:
-            pred = self.extract(raw_text=raw_text)
-        except Exception:
-            pass
-
-        fields = _safe_pick(pred, "case_citations", "statute_citations", "secondary_sources", "citation_errors")
-        return {
-            "agent_name": "citation_extraction",
-            **fields,
-            "timestamp": datetime.now().isoformat()
-        }
-
-
-class LegalMemorandomAgent(dspy.Module):
-    """Synthesizes research into a legal memorandum"""
+    # Discovery
+    if "discovery" in issue or "request" in issue:
+        selected_skills.append("discovery_analysis")
+        plan_parts.append("Analyze discovery requests")
     
-    def __init__(self):
-        super().__init__()
-        self.synthesize = dspy.ChainOfThought(LegalMemorandomSignature)
+    # Issue spotting for complex scenarios
+    if "issue" in issue or "problem" in issue:
+        selected_skills.append("issue_spotting")
+        plan_parts.append("Identify legal issues")
     
-    # LegalMemorandomAgent
-    def forward(self, case_brief: str, research_findings: str) -> Dict[str, Any]:
-        pred = None
-        try:
-            pred = self.synthesize(case_brief=case_brief, research_findings=research_findings)
-        except Exception:
-            pass
-
-        fields = _safe_pick(pred, "issue_statement", "brief_answer", "analysis", "conclusion")
-        return {
-            "agent_name": "legal_memorandum",
-            **fields,
-            "timestamp": datetime.now().isoformat()
-        }
-
-
-
-class DiscoveryAnalysisAgent(dspy.Module):
-    """Analyzes documents for discovery purposes"""
+    # Privilege
+    if "privilege" in issue or "confidential" in issue or "attorney-client" in issue:
+        selected_skills.append("privilege_log")
+        plan_parts.append("Identify privileged materials")
     
-    def __init__(self):
-        super().__init__()
-        self.analyze = dspy.ChainOfThought(DiscoveryAnalysisSignature)
+    # Compliance
+    if "complian" in issue or "regulation" in issue or "violation" in issue:
+        selected_skills.append("compliance_check")
+        plan_parts.append("Check regulatory compliance")
     
-    # DiscoveryAnalysisAgent
-    def forward(self, case_theory: str, document_collection: str) -> Dict[str, Any]:
-        pred = None
-        try:
-            pred = self.analyze(case_theory=case_theory, document_collection=document_collection)
-        except Exception:
-            pass
-
-        fields = _safe_pick(pred, "privileged_documents", "responsive_documents", "key_evidence", "redaction_recommendations")
-        return {
-            "agent_name": "discovery_analysis",
-            **fields,
-            "timestamp": datetime.now().isoformat()
-        }
-
-
-
-# ========================== RESEARCH ORCHESTRATOR ==========================
-
-@dataclass
-class ResearchTask:
-    """Represents a research task to be executed"""
-    agent_type: str
-    params: Dict[str, Any]
-    priority: int = 1
-
-
-class ParalegalOrchestrator:
-    """
-    Orchestrates paralegal research tasks
-    Can run agents sequentially or in parallel
-    """
+    # If memo is requested or we have multiple outputs
+    if "memo" in issue or len(selected_skills) >= 3:
+        selected_skills.append("memo_drafting")
+        plan_parts.append("Draft research memo")
     
-    def __init__(self):
-        self.doc_agent = DocumentAnalysisAgent()
-        self.case_law_agent = CaseLawResearchAgent()
-        self.statutory_agent = StatutoryResearchAgent()
-        self.citation_agent = CitationExtractionAgent()
-        self.memo_agent = LegalMemorandomAgent()
-        self.discovery_agent = DiscoveryAnalysisAgent()
-        
-        self.agent_map = {
-            'document_analysis': self.doc_agent,
-            'case_law_research': self.case_law_agent,
-            'statutory_research': self.statutory_agent,
-            'citation_extraction': self.citation_agent,
-            'legal_memorandum': self.memo_agent,
-            'discovery_analysis': self.discovery_agent
-        }
+    # Ensure only available skills are selected
+    selected_skills = [s for s in selected_skills if s in available_skills]
     
-    async def execute_agent_async(self, task: ResearchTask) -> Dict[str, Any]:
-        """Execute a single agent task asynchronously"""
-        try:
-            agent = self.agent_map.get(task.agent_type)
-            if not agent:
-                return {
-                    'agent_name': task.agent_type,
-                    'error': f'Unknown agent type: {task.agent_type}',
-                    'timestamp': datetime.now().isoformat()
-                }
-            
-            # Execute agent in thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, lambda: agent(**task.params))
-            result['priority'] = task.priority
-            return result
-        except Exception as e:
-            return {
-                'agent_name': task.agent_type,
-                'error': str(e),
-                'timestamp': datetime.now().isoformat()
-            }
+    # Default to basic research if nothing selected
+    if not selected_skills:
+        selected_skills = ["case_law", "statutes"]
+        plan_parts = ["Research case law", "Research statutes"]
     
-    async def run_parallel(
-        self,
-        tasks: List[ResearchTask]
-    ) -> Dict[str, Any]:
-        """
-        Execute multiple research tasks in parallel
-        Returns compiled results from all agents
-        """
-        print(f"[Orchestrator] Starting parallel execution of {len(tasks)} tasks...")
-        
-        # Execute all tasks in parallel
-        results = await asyncio.gather(
-            *[self.execute_agent_async(task) for task in tasks],
-            return_exceptions=True
-        )
-        
-        # Handle any exceptions
-        processed_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                processed_results.append({
-                    'agent_name': tasks[i].agent_type,
-                    'error': str(result),
-                    'timestamp': datetime.now().isoformat()
-                })
-            else:
-                processed_results.append(result)
-        
-        # Compile results
-        return {
-            'execution_mode': 'parallel',
-            'total_tasks': len(tasks),
-            'successful_tasks': sum(1 for r in processed_results if 'error' not in r),
-            'failed_tasks': sum(1 for r in processed_results if 'error' in r),
-            'agent_results': processed_results,
-            'timestamp': datetime.now().isoformat()
-        }
+    plan = "; ".join(plan_parts) if plan_parts else "Basic legal research"
     
-    def run_sequential(
-        self,
-        tasks: List[ResearchTask]
-    ) -> Dict[str, Any]:
-        """
-        Execute research tasks sequentially
-        Useful when later tasks depend on earlier results
-        """
-        print(f"[Orchestrator] Starting sequential execution of {len(tasks)} tasks...")
-        
-        results = []
-        for task in tasks:
-            try:
-                agent = self.agent_map.get(task.agent_type)
-                if not agent:
-                    results.append({
-                        'agent_name': task.agent_type,
-                        'error': f'Unknown agent type: {task.agent_type}',
-                        'timestamp': datetime.now().isoformat()
-                    })
-                    continue
-                
-                result = agent(**task.params)
-                result['priority'] = task.priority
-                results.append(result)
-            except Exception as e:
-                results.append({
-                    'agent_name': task.agent_type,
-                    'error': str(e),
-                    'timestamp': datetime.now().isoformat()
-                })
-        
-        return {
-            'execution_mode': 'sequential',
-            'total_tasks': len(tasks),
-            'successful_tasks': sum(1 for r in results if 'error' not in r),
-            'failed_tasks': sum(1 for r in results if 'error' in r),
-            'agent_results': results,
-            'timestamp': datetime.now().isoformat()
-        }
-    
-    async def full_research_workflow(
-        self,
-        case_brief: str,
-        document_list: str,
-        legal_issue: str,
-        jurisdiction: str,
-        execution_mode: str = 'parallel'
-    ) -> Dict[str, Any]:
-        """
-        Execute a complete research workflow
-        Phase 1: Initial research (parallel)
-        Phase 2: Synthesis (sequential)
-        """
-        print("[Orchestrator] Starting full research workflow...")
-        
-        # Phase 1: Parallel research tasks
-        phase1_tasks = [
-            ResearchTask(
-                agent_type='document_analysis',
-                params={'case_brief': case_brief, 'document_list': document_list},
-                priority=1
-            ),
-            ResearchTask(
-                agent_type='case_law_research',
-                params={'legal_issue': legal_issue, 'jurisdiction': jurisdiction},
-                priority=1
-            ),
-            ResearchTask(
-                agent_type='statutory_research',
-                params={
-                    'legal_area': legal_issue.split()[0],  # Extract first word as area
-                    'jurisdiction': jurisdiction,
-                    'search_terms': legal_issue
-                },
-                priority=1
-            )
-        ]
-        
-        if execution_mode == 'parallel':
-            phase1_results = await self.run_parallel(phase1_tasks)
-        else:
-            phase1_results = self.run_sequential(phase1_tasks)
-        
-        # Compile findings for synthesis
-        research_findings = json.dumps(phase1_results['agent_results'], indent=2)
-        
-        # Phase 2: Synthesis
-        print("[Orchestrator] Synthesizing research into legal memorandum...")
-        memo_result = self.memo_agent(
-            case_brief=case_brief,
-            research_findings=research_findings
-        )
-        
-        return {
-            'workflow': 'full_research',
-            'phase1_results': phase1_results,
-            'final_memorandum': memo_result,
-            'timestamp': datetime.now().isoformat()
-        }
-
-
-# ========================== FAKE DATA GENERATORS ==========================
-
-def generate_fake_case_data() -> Dict[str, Any]:
-    """Generate fake case data for testing"""
     return {
-        'case_brief': """
-        Client: Sarah Martinez, plaintiff
-        Defendant: Acme Insurance Company
-        
-        Case Type: Insurance Bad Faith & Negligence
-        
-        Facts: Client was rear-ended at a red light on I-95 in Miami, FL on March 15, 2024.
-        Defendant driver was texting while driving. Client sustained whiplash and back injuries
-        requiring 6 months of physical therapy. Defendant's insurance (Acme Insurance) initially
-        denied claim, citing "pre-existing condition" despite no prior back issues. After 8 months,
-        they offered $5,000 settlement for $45,000 in medical bills.
-        
-        Legal Issues: 
-        1. Negligence per se (texting while driving violation)
-        2. Insurance bad faith under FL Stat. §624.155
-        3. Damages for medical expenses, pain and suffering, lost wages
-        """,
-        
-        'document_list': """
-        1. police_report_2024-03-15.pdf - Official accident report, witness statements
-        2. medical_records_martinez.pdf - ER visit, X-rays, PT records (300 pages)
-        3. insurance_policy_acme_2024.pdf - Client's policy with Acme Insurance
-        4. claim_denial_letter.pdf - Initial denial letter citing pre-existing condition
-        5. settlement_offer_letter.pdf - Low-ball settlement offer
-        6. text_message_records.pdf - Defendant's phone records (subpoenaed)
-        7. employment_records.pdf - Lost wage documentation
-        8. photos_accident_scene.zip - 25 photos of vehicles and intersection
-        9. medical_bills_itemized.xlsx - Detailed billing statements
-        10. adjuster_notes.pdf - Insurance adjuster's investigation notes
-        """,
-        
-        'legal_issue': 'Insurance bad faith and negligence in Florida auto accident case',
-        
-        'jurisdiction': 'Florida State Courts, 11th Judicial Circuit (Miami-Dade County)',
-        
-        'raw_citation_text': """
-        Research notes on bad faith:
-        - See Harvey v. GEICO, 354 F.3d 1321 (11th Cir 2003) - established standard
-        - FL Stat. §624.155 requires prompt investigation and payment
-        - Berges v. Infinity Ins. Co., 896 So. 2d 665 (Fla. 2004) - bad faith damages
-        - Also check Restatement (Second) of Torts §§ 281-293 on negligence
-        - State Farm v. Laforet, 658 So.2d 55 (Fla. 1995) about delay tactics
-        - Imhof v. Nationwide Mut Ins Co (may have wrong citation?)
-        """,
-        
-        'case_theory': """
-        We will prove Acme Insurance acted in bad faith by:
-        1. Unreasonably denying valid claim based on false "pre-existing condition"
-        2. Failing to conduct adequate investigation
-        3. Delaying payment for 8 months without justification
-        4. Offering unconscionably low settlement ($5k for $45k in bills)
-        5. Pattern and practice of similar denials (if discoverable)
-        """,
-        
-        'document_collection_for_discovery': """
-        Documents received from Acme Insurance via discovery:
-        - Claims file for Sarah Martinez (500 pages)
-        - Internal emails between adjusters and supervisors
-        - Medical review reports by company doctor
-        - Settlement authority guidelines
-        - Training materials for claims adjusters
-        - Similar claim files from same time period (requested)
-        - Communications with defense counsel
-        - Financial records showing claim reserves
-        """
+        "skills": selected_skills,
+        "plan": plan
     }
 
+# --------- orchestrated run ---------
+async def run_orchestrated(
+    issue: str, 
+    jurisdiction: str, 
+    terms: str, 
+    raw_citation_text: str, 
+    docs: List[Dict[str,Any]],
+    selected_agents: List[str] | None = None
+) -> Dict[str,Any]:
+    """
+    Main orchestration function that runs selected agents in parallel.
+    
+    Args:
+        issue: Legal issue to research
+        jurisdiction: Jurisdiction (e.g., "Florida state courts")
+        terms: Search terms
+        raw_citation_text: Text containing citations to extract
+        docs: Document corpus for context
+        selected_agents: Optional list of agent names to run. If None, uses planner.
+    """
+    t0 = time.time()
+    
+    # Build focused context once
+    ctx_query = f"{issue} {jurisdiction} {terms}"
+    ctx = rerank_context(ctx_query, docs, top_k=5)
 
-# ========================== MAIN EXECUTION ==========================
+    # 1) DETERMINE WHICH AGENTS TO RUN
+    available = list(AVAILABLE_AGENTS.keys())
+    
+    if selected_agents:
+        # User specified which agents to run
+        chosen = [s for s in selected_agents if s in available]
+        plan_text = f"Running user-selected agents: {', '.join(chosen)}"
+    else:
+        # Use simple planner
+        task = {
+            "issue": issue, 
+            "jurisdiction": jurisdiction, 
+            "terms": terms, 
+            "raw_text": raw_citation_text, 
+            "context": ctx
+        }
+        plan_result = await simple_planner(task, available)
+        chosen = plan_result["skills"]
+        plan_text = plan_result["plan"]
+
+    if not chosen:
+        return {
+            "status": "no_agents_selected",
+            "reason": "No agents were selected for this task.",
+            "available_agents": available,
+            "ctx_len": len(ctx),
+            "build_time_sec": round(time.time()-t0, 3),
+        }
+
+    # 2) PARALLEL EXECUTION
+    base_input: AgentInput = {
+        "issue": issue, 
+        "jurisdiction": jurisdiction, 
+        "terms": terms, 
+        "context": ctx, 
+        "raw_text": raw_citation_text
+    }
+    
+    tasks = [asyncio.create_task(AVAILABLE_AGENTS[name](base_input)) for name in chosen]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    outputs, errors = {}, []
+    for r in results:
+        if isinstance(r, Exception):
+            errors.append(f"Exception: {repr(r)}")
+        elif isinstance(r, dict):
+            if r.get("status") == "ok":
+                outputs[r["name"]] = r["output"]
+            else:
+                errors.append(f"{r.get('name', 'unknown')}: {r.get('error', 'unknown error')}")
+
+    # 3) Synthesize final note
+    join_prompt = f"""You are a careful U.S. legal analyst. Synthesize a concise note (12–18 lines).
+Prefer certain authorities; mark 'possible' when uncertain.
+
+Plan: {plan_text}
+
+Focused context:
+{ctx or '(none)'}
+
+Agent outputs:
+{json.dumps(outputs, indent=2)}
+
+Return sections:
+1) Issues
+2) Key Authorities
+3) Application to Facts
+4) Gaps / Next Steps
+"""
+    note = saul_complete_sync(join_prompt)
+
+    return {
+        "status": "ok",
+        "plan": plan_text,
+        "agents_run": chosen,
+        "agent_outputs": outputs,
+        "errors": errors,
+        "note": note,
+        "ctx_len": len(ctx),
+        "build_time_sec": round(time.time()-t0, 3),
+    }
+
+# --------- demo ----------
+def demo_docs() -> List[Dict[str, Any]]:
+    return [
+        {"id":"order_042","meta":{"id":"order_042","court":"USDC"},
+         "text":"ORDER: To survive Rule 12(b)(6)... Iqbal, 556 U.S. 662 (2009); Twombly, 550 U.S. 544 (2007)."},
+        {"id":"fl_624_155","meta":{"id":"fl_624_155"},
+         "text":"Fla. Stat. § 624.155 creates a civil remedy for insurer bad faith."},
+        {"id":"Berges","meta":{"id":"Berges v. Infinity"},
+         "text":"Berges v. Infinity Ins. Co., 896 So. 2d 665 (Fla. 2004) discusses bad faith duties."},
+        {"id":"Laforet","meta":{"id":"State Farm v. Laforet"},
+         "text":"State Farm v. Laforet, 658 So. 2d 55 (Fla. 1995) addresses statutory bad faith and damages."},
+    ]
+
+def list_available_agents():
+    """Print all available agents"""
+    print("\n=== AVAILABLE AGENTS ===")
+    for i, agent_name in enumerate(AVAILABLE_AGENTS.keys(), 1):
+        print(f"{i:2d}. {agent_name}")
+    print(f"\nTotal: {len(AVAILABLE_AGENTS)} agents\n")
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Paralegal Research ADK using Saul-7B via vLLM'
+    ap = argparse.ArgumentParser(
+        "ADK Orchestrator - Legal Research Agent System",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # List all available agents
+  python orchestrator.py --list-agents
+  
+  # Run with automatic agent selection
+  python orchestrator.py --issue "Insurance bad faith" --jurisdiction "Florida"
+  
+  # Run specific agents
+  python orchestrator.py --agents case_law,statutes,memo_drafting --issue "Contract dispute"
+  
+  # Run all agents
+  python orchestrator.py --agents all --issue "Complex litigation matter"
+"""
     )
-    
-    parser.add_argument(
-        '--api-base',
-        default='http://localhost:8000/v1',
-        help='vLLM API base URL'
-    )
-    parser.add_argument(
-        '--model',
-        default='Equall/Saul-7B-Instruct-v1',
-        help='Model name'
-    )
-    parser.add_argument(
-        '--temperature',
-        type=float,
-        default=0.2,
-        help='Temperature for generation'
-    )
-    parser.add_argument(
-        '--mode',
-        choices=['parallel', 'sequential', 'full'],
-        default='full',
-        help='Execution mode: parallel, sequential, or full workflow'
-    )
-    parser.add_argument(
-        '--output',
-        default='research_results.json',
-        help='Output file for results'
-    )
-    parser.add_argument(
-        '--use-fake-data',
-        action='store_true',
-        help='Use fake case data for testing'
-    )
-    
-    args = parser.parse_args()
-    
-    # Configure Saul-7B
-    print("[Config] Configuring vLLM-served Saul-7B...")
-    config = SaulConfig(
-        api_base=args.api_base,
-        model=args.model,
-        temperature=args.temperature
-    )
-    configure_dspy(config)
-    
-    # Initialize orchestrator
-    orchestrator = ParalegalOrchestrator()
-    
-    # Get case data
-    if args.use_fake_data:
-        print("[Data] Using fake case data...")
-        case_data = generate_fake_case_data()
-    else:
-        # In production, load from files or database
-        raise NotImplementedError("Real data loading not yet implemented. Use --use-fake-data")
-    
-    # Execute based on mode
-    if args.mode == 'full':
-        result = asyncio.run(
-            orchestrator.full_research_workflow(
-                case_brief=case_data['case_brief'],
-                document_list=case_data['document_list'],
-                legal_issue=case_data['legal_issue'],
-                jurisdiction=case_data['jurisdiction'],
-                execution_mode='parallel'
-            )
-        )
-    elif args.mode == 'parallel':
-        tasks = [
-            ResearchTask(
-                agent_type='document_analysis',
-                params={
-                    'case_brief': case_data['case_brief'],
-                    'document_list': case_data['document_list']
-                },
-                priority=1
-            ),
-            ResearchTask(
-                agent_type='case_law_research',
-                params={
-                    'legal_issue': case_data['legal_issue'],
-                    'jurisdiction': case_data['jurisdiction']
-                },
-                priority=1
-            ),
-            ResearchTask(
-                agent_type='citation_extraction',
-                params={'raw_text': case_data['raw_citation_text']},
-                priority=2
-            )
-        ]
-        result = asyncio.run(orchestrator.run_parallel(tasks))
-    else:  # sequential
-        tasks = [
-            ResearchTask(
-                agent_type='document_analysis',
-                params={
-                    'case_brief': case_data['case_brief'],
-                    'document_list': case_data['document_list']
-                },
-                priority=1
-            ),
-            ResearchTask(
-                agent_type='statutory_research',
-                params={
-                    'legal_area': 'Insurance',
-                    'jurisdiction': case_data['jurisdiction'],
-                    'search_terms': 'bad faith denial'
-                },
-                priority=1
-            )
-        ]
-        result = orchestrator.run_sequential(tasks)
-    
+    ap.add_argument("--list-agents", action="store_true", help="List all available agents and exit")
+    ap.add_argument("--agents", help="Comma-separated agent names to run, or 'all' for all agents")
+    ap.add_argument("--issue", default="Insurance bad faith after auto accident")
+    ap.add_argument("--jurisdiction", default="Florida state courts")
+    ap.add_argument("--terms", default="bad faith, claim denial, delay, settlement authority")
+    ap.add_argument("--citext", default="See Harvey v. GEICO; Berges v. Infinity Ins. Co.; Fla. Stat. § 624.155; State Farm v. Laforet.")
+    ap.add_argument("--out", default="adk_joined.json", help="Output JSON file")
+    args = ap.parse_args()
+
+    # List agents and exit
+    if args.list_agents:
+        list_available_agents()
+        return
+
+    # Parse agent selection
+    selected_agents = None
+    if args.agents:
+        if args.agents.lower() == "all":
+            selected_agents = list(AVAILABLE_AGENTS.keys())
+            print(f"\n🚀 Running ALL {len(selected_agents)} agents...\n")
+        else:
+            selected_agents = [a.strip() for a in args.agents.split(",")]
+            invalid = [a for a in selected_agents if a not in AVAILABLE_AGENTS]
+            if invalid:
+                print(f"⚠️  WARNING: Unknown agents will be skipped: {invalid}")
+            selected_agents = [a for a in selected_agents if a in AVAILABLE_AGENTS]
+            if selected_agents:
+                print(f"\n🎯 Running selected agents: {', '.join(selected_agents)}\n")
+            else:
+                print("❌ No valid agents selected. Use --list-agents to see available agents.")
+                return
+
+    # Run orchestrator
+    result = asyncio.run(run_orchestrated(
+        args.issue, 
+        args.jurisdiction, 
+        args.terms, 
+        args.citext, 
+        demo_docs(),
+        selected_agents=selected_agents
+    ))
+
     # Save results
-    print(f"[Output] Saving results to {args.output}...")
-    with open(args.output, 'w', encoding='utf-8') as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+    with open(args.out, "w") as f:
+        json.dump(result, f, indent=2)
     
-    print(f"[Complete] Research complete. Results saved to {args.output}")
-    print("\n" + "="*80)
-    print("SUMMARY:")
-    print("="*80)
+    # Print summary
+    print("\n" + "="*60)
+    print("ORCHESTRATION RESULTS")
+    print("="*60)
+    print(f"Status: {result.get('status')}")
+    print(f"Plan: {result.get('plan', 'N/A')}")
+    print(f"Agents run: {', '.join(result.get('agents_run', []))}")
+    print(f"Errors: {len(result.get('errors', []))}")
+    print(f"Build time: {result.get('build_time_sec')}s")
+    print(f"\nResults saved to: {args.out}")
     
-    if 'phase1_results' in result:
-        print(f"Phase 1 - Research Tasks: {result['phase1_results']['successful_tasks']}/{result['phase1_results']['total_tasks']} successful")
-        print(f"Phase 2 - Memorandum: Generated")
-    else:
-        print(f"Tasks: {result['successful_tasks']}/{result['total_tasks']} successful")
+    if result.get('note'):
+        print("\n" + "="*60)
+        print("SYNTHESIZED NOTE")
+        print("="*60)
+        print(result['note'])
     
-    return 0
+    print("\n")
 
-
-if __name__ == '__main__':
-    sys.exit(main())
+if __name__ == "__main__":
+    main()
