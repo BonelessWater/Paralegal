@@ -1020,6 +1020,23 @@ Be practical and actionable. Focus on real-world application."""
         This is much smaller than the old synthesis because each section
         is already written (8-15 lines each = ~3000 chars total).
         """
+        # Truncate sections if needed to fit within vLLM's context window
+        # vLLM max_model_len=4096, need room for: prompt (~1500 tokens) + output (2500 tokens) = 4000 tokens
+        # Keep sections to ~4000 chars total (~1000 tokens) to leave room
+        max_section_chars = 1300  # Each section max
+        
+        legal_framework = sections.get('Legal Framework', '[Not provided]')
+        if len(legal_framework) > max_section_chars:
+            legal_framework = legal_framework[:max_section_chars] + "\n[... truncated for brevity ...]"
+        
+        case_analysis = sections.get('Case Analysis', '[Not provided]')
+        if len(case_analysis) > max_section_chars:
+            case_analysis = case_analysis[:max_section_chars] + "\n[... truncated for brevity ...]"
+        
+        practical_guidance = sections.get('Practical Guidance', '[Not provided]')
+        if len(practical_guidance) > max_section_chars:
+            practical_guidance = practical_guidance[:max_section_chars] + "\n[... truncated for brevity ...]"
+        
         prompt = f"""You are integrating separately-written memo sections into a cohesive legal research memo.
 
 RESEARCH QUESTION: {question}
@@ -1031,13 +1048,13 @@ Create a well-structured legal memo with these sections:
    - Key takeaways from the research
 
 2. LEGAL FRAMEWORK
-{sections.get('Legal Framework', '[Not provided]')}
+{legal_framework}
 
 3. CASE LAW ANALYSIS  
-{sections.get('Case Analysis', '[Not provided]')}
+{case_analysis}
 
 4. PRACTICAL GUIDANCE
-{sections.get('Practical Guidance', '[Not provided]')}
+{practical_guidance}
 
 OUTPUT FORMAT:
 - Add executive summary at the top
@@ -1048,7 +1065,7 @@ OUTPUT FORMAT:
 
 Write the complete integrated memo now:"""
 
-        response = await self._ask_llm(prompt, max_tokens=2500, temperature=0.4, timeout=90)  # Increased from 1500 to avoid truncation
+        response = await self._ask_llm(prompt, max_tokens=1800, temperature=0.4, timeout=90)  # Reduced to fit within 4096 context window
         return response.strip()
     
     async def _quality_check_memo(self, memo: str, findings: List[AgentFinding]) -> str:
