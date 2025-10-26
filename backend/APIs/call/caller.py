@@ -308,6 +308,7 @@ async def twilio_media_stream(ws: WebSocket):
     call_sid = None
     openai_ws = None
     greet_sent = False
+    connection_active = True  # Track if connection is still active
 
     twilio_packets = 0
     openai_packets = 0
@@ -347,7 +348,7 @@ async def twilio_media_stream(ws: WebSocket):
         await openai_ws.send(json.dumps(session_update))
 
         async def handle_openai():
-            nonlocal openai_packets, call_sid
+            nonlocal openai_packets, call_sid, connection_active
             async for raw in openai_ws:
                 try:
                     evt = json.loads(raw)
@@ -359,13 +360,18 @@ async def twilio_media_stream(ws: WebSocket):
 
                     elif etype == "response.audio.delta":
                         delta = evt.get("delta")
-                        if delta and stream_sid:
+                        if delta and stream_sid and connection_active:
                             openai_packets += 1
-                            await ws.send_json({
-                                "event": "media",
-                                "streamSid": stream_sid,
-                                "media": {"payload": delta}
-                            })
+                            try:
+                                await ws.send_json({
+                                    "event": "media",
+                                    "streamSid": stream_sid,
+                                    "media": {"payload": delta}
+                                })
+                            except Exception as send_err:
+                                print(f"⚠️  Failed to send audio to Twilio (connection may be closed): {send_err}")
+                                connection_active = False
+                                break
 
                     elif etype == "response.audio_transcript.done":
                         print(f"🤖 AI says: {evt.get('transcript','')}")
@@ -401,63 +407,73 @@ async def twilio_media_stream(ws: WebSocket):
                     print(f"❌ OpenAI handler error: {e}")
 
         async def handle_twilio():
-            nonlocal stream_sid, call_sid, twilio_packets, greet_sent, openai_ws
-            async for text in ws.iter_text():
-                try:
-                    msg = json.loads(text)
-                    ev = msg.get("event")
+            nonlocal stream_sid, call_sid, twilio_packets, greet_sent, openai_ws, connection_active
+            try:
+                async for text in ws.iter_text():
+                    try:
+                        msg = json.loads(text)
+                        ev = msg.get("event")
 
-                    if ev == "start":
-                        stream_sid = msg["start"]["streamSid"]
-                        call_sid = msg["start"]["callSid"]
-                        print(f"🎬 Media stream started | Call SID: {call_sid}")
+                        if ev == "start":
+                            stream_sid = msg["start"]["streamSid"]
+                            call_sid = msg["start"]["callSid"]
+                            print(f"🎬 Media stream started | Call SID: {call_sid}")
 
-                        # Attach client profile as session metadata now that we have call_sid
-                        client_profile = active_profiles.get(call_sid) or SAMPLE_CLIENT_PROFILE
-                        await openai_ws.send(json.dumps({
-                            "type": "session.update",
-                            "session": {"metadata": {"client_profile": client_profile}}
-                        }))
-                        print("🧾 Attached client_profile metadata to session")
-
-                        # Trigger greeting exactly once (now streamSid exists)
-                        if not greet_sent:
-                            greet_sent = True
+                            # Attach client profile as session metadata now that we have call_sid
+                            client_profile = active_profiles.get(call_sid) or SAMPLE_CLIENT_PROFILE
                             await openai_ws.send(json.dumps({
-                                "type": "response.create",
-                                "response": {
-                                    "modalities": ["text", "audio"],
-                                    "instructions": (
-                                        "Start the follow-up. Greet, disclose not-legal-advice, "
-                                        "verify the client with two soft checks, and list matters to choose from."
-                                    )
-                                }
+                                "type": "session.update",
+                                "session": {"metadata": {"client_profile": client_profile}}
+                            }))
+                            print("🧾 Attached client_profile metadata to session")
+
+                            # Trigger greeting exactly once (now streamSid exists)
+                            if not greet_sent:
+                                greet_sent = True
+                                await openai_ws.send(json.dumps({
+                                    "type": "response.create",
+                                    "response": {
+                                        "modalities": ["text", "audio"],
+                                        "instructions": (
+                                            "Start the follow-up. Greet, disclose not-legal-advice, "
+                                            "verify the client with two soft checks, and list matters to choose from."
+                                        )
+                                    }
+                                }))
+
+                        elif ev == "media":
+                            twilio_packets += 1
+                            await openai_ws.send(json.dumps({
+                                "type": "input_audio_buffer.append",
+                                "audio": msg["media"]["payload"]
                             }))
 
-                    elif ev == "media":
-                        twilio_packets += 1
-                        await openai_ws.send(json.dumps({
-                            "type": "input_audio_buffer.append",
-                            "audio": msg["media"]["payload"]
-                        }))
+                        elif ev == "stop":
+                            print(f"⏹️  Stream stopped. Packets: {twilio_packets}")
+                            connection_active = False
+                            break
 
-                    elif ev == "stop":
-                        print(f"⏹️  Stream stopped. Packets: {twilio_packets}")
-
-                except Exception as e:
-                    print(f"❌ Twilio WS handler error: {e}")
+                    except Exception as e:
+                        print(f"❌ Twilio WS handler error: {e}")
+            except Exception as e:
+                print(f"❌ Twilio WebSocket connection error: {e}")
+                connection_active = False
 
         # Optional heartbeat (debug)
         async def _pinger():
+            nonlocal connection_active
             try:
-                while True:
+                while connection_active:
                     await asyncio.sleep(20)
+                    if not connection_active:
+                        break
                     print(f"⏱️ heartbeat | twilio_packets={twilio_packets} | openai_packets={openai_packets}")
                     if openai_ws:
                         try:
                             await openai_ws.send(json.dumps({"type": "ping"}))
                         except Exception:
-                            pass
+                            connection_active = False
+                            break
             except Exception:
                 pass
 
@@ -467,12 +483,21 @@ async def twilio_media_stream(ws: WebSocket):
         print(f"❌ WebSocket bridge error: {e}")
 
     finally:
+        connection_active = False  # Ensure connection is marked inactive
         print("🔌 Closing connections")
-        try:
-            if openai_ws:
+
+        # Close OpenAI WebSocket
+        if openai_ws:
+            try:
                 await openai_ws.close()
-        except Exception:
-            pass
+            except Exception as e:
+                print(f"⚠️  Error closing OpenAI WebSocket: {e}")
+
+        # Close Twilio WebSocket
+        try:
+            await ws.close()
+        except Exception as e:
+            print(f"⚠️  Error closing Twilio WebSocket: {e}")
 
 # ---------- (Optional) Fetch the saved follow-up by Call SID ----------
 @app.get("/followup")
