@@ -127,7 +127,8 @@ class LocalTranscriptionPipeline:
         dry_run: bool = False,
         limit: Optional[int] = None,
         language: str = "en",
-        save_progress: bool = True
+        save_progress: bool = True,
+        skip_confirmation: bool = False
     ) -> Dict:
         """
         Transcribe all audio recordings and save to database.
@@ -138,6 +139,7 @@ class LocalTranscriptionPipeline:
             limit: Maximum number of files to process
             language: Audio language code (default: 'en' for English)
             save_progress: Save after each transcription (vs batch at end)
+            skip_confirmation: Skip the confirmation prompt
         
         Returns:
             Dictionary with transcription statistics
@@ -199,7 +201,7 @@ class LocalTranscriptionPipeline:
         print(f"  Cost: FREE (local processing)")
         
         # Confirm before proceeding
-        if not dry_run:
+        if not dry_run and not skip_confirmation:
             response = input(f"\nProceed with transcription? (y/n): ")
             if response.lower() != 'y':
                 print("❌ Cancelled")
