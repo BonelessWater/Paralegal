@@ -1,49 +1,72 @@
+#!/usr/bin/env python3
 """
-Lawgorithm Call Service (Fixed Greeting)
-Automated client -> lawyer/case status follow-up via Twilio Media Streams <-> OpenAI Realtime
+Lawgorithm Call Service — Twilio Media Streams <-> OpenAI Realtime (Stable)
 
-RUN:
-  pip install fastapi uvicorn "twilio>=9" python-dotenv websockets
-  uvicorn lawgorithm:app --host localhost --port 8000 --reload
+Quick Start
+-----------
+1) pip install:
+   fastapi uvicorn "twilio>=9" python-dotenv websockets
 
-ENV (.env):
-  OPENAI_API_KEY=sk-...
-  TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
-  SERVER_DOMAIN=your-public-host.tld-or-ngrok   # e.g. a1b2c3d4.ngrok-free.app (NO protocol)
-  REALTIME_MODEL=gpt-4o-realtime-preview-2024-10-01  # optional; override if you have gpt-realtime
+2) Run your app:
+   uvicorn lawgorithm:app --host 0.0.0.0 --port 8000
+
+3) Expose publicly with ngrok (HTTPS terminates at ngrok):
+   ngrok http --domain YOURSUB.ngrok-free.app 8000
+
+4) .env (examples):
+   OPENAI_API_KEY=sk-...
+   TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
+   SERVER_DOMAIN=YOURSUB.ngrok-free.app
+   REALTIME_MODEL=gpt-4o-realtime-preview-2024-10-01
+
+5) In Twilio (or via API), set Voice webhook to:
+   https://YOURSUB.ngrok-free.app/voice
+   (The app itself tells Twilio to stream to wss://YOURSUB.ngrok-free.app/twilio-media)
+
+Notes
+-----
+- We use `track='inbound_track'` to avoid feedback/echo.
+- We buffer OpenAI audio and flush ~every 60 ms as G.711 μ-law base64 payloads.
+- Keep Uvicorn plain HTTP; let ngrok handle TLS. Do NOT point Twilio at http://.
 """
 
-import os
-import json
+from __future__ import annotations
+
 import asyncio
-import websockets
+import base64
+import json
+import os
+import time
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Any, Dict
 
+import websockets
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, Request, status
-from fastapi.responses import PlainTextResponse, JSONResponse, HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Request, WebSocket, status
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from twilio.rest import Client
-from twilio.twiml.voice_response import VoiceResponse, Connect
+from twilio.twiml.voice_response import Connect, VoiceResponse
 
+# =========================
+# Load config
+# =========================
 load_dotenv()
 
-# =========================
-# Configuration
-# =========================
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
-TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
-TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
-SERVER_DOMAIN = os.getenv('SERVER_DOMAIN', 'example.com')
-REALTIME_MODEL = os.getenv('REALTIME_MODEL', 'gpt-4o-realtime-preview-2024-10-01')
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+SERVER_DOMAIN = os.getenv("SERVER_DOMAIN", "example.com")
+REALTIME_MODEL = os.getenv("REALTIME_MODEL", "gpt-4o-realtime-preview-2024-10-01")
 
-DEFAULT_PHONE_NUMBER = '+13526656965'  # for quick tests via /make-call
+DEFAULT_PHONE_NUMBER = os.getenv(
+    "DEFAULT_PHONE_NUMBER", "+13526656965"
+)  # quick tests via /make-call
 
 # =========================
-# Hard-coded example client context (baked into the app)
+# Example client profile
 # =========================
 SAMPLE_CLIENT_PROFILE: Dict[str, Any] = {
     "client_id": "CL-20481",
@@ -54,7 +77,7 @@ SAMPLE_CLIENT_PROFILE: Dict[str, Any] = {
     "preferred_contact": "email",
     "availability_windows_et": [
         {"days": "Mon–Thu", "from": "13:00", "to": "17:30"},
-        {"days": "Fri", "from": "09:00", "to": "12:00"}
+        {"days": "Fri", "from": "09:00", "to": "12:00"},
     ],
     "matters": [
         {
@@ -63,19 +86,16 @@ SAMPLE_CLIENT_PROFILE: Dict[str, Any] = {
             "practice_area": "Insurance / Personal Injury",
             "responsible_attorney": "Jordan Kim, Esq.",
             "status": "Waiting on insurer’s settlement response",
-            "key_dates": {
-                "demand_sent": "2025-10-10",
-                "insurer_response_due": "2025-10-28"
-            },
+            "key_dates": {"demand_sent": "2025-10-10", "insurer_response_due": "2025-10-28"},
             "open_questions": [
                 "What if no response by the 10/28 deadline?",
-                "Timeline for independent medical exam (IME), if any?"
+                "Timeline for independent medical exam (IME), if any?",
             ],
             "documents_on_file": [
                 "Demand_Packet_2025-10-10.pdf",
                 "ER_Visit_Notes_2025-09-17.pdf",
-                "Police_Report_2025-09-15.pdf"
-            ]
+                "Police_Report_2025-09-15.pdf",
+            ],
         },
         {
             "matter_id": "MAT-AXR-207",
@@ -85,18 +105,15 @@ SAMPLE_CLIENT_PROFILE: Dict[str, Any] = {
             "status": "Negotiation over early termination fee",
             "key_dates": {
                 "lease_end_requested": "2025-11-30",
-                "landlord_counter_due": "2025-10-31"
+                "landlord_counter_due": "2025-10-31",
             },
             "open_questions": [
                 "Validity of early termination clause Section 14(b)",
-                "Whether key hand-off can be in mid-November"
+                "Whether key hand-off can be in mid-November",
             ],
-            "documents_on_file": [
-                "Lease_2024-12-01.pdf",
-                "Email_Thread_Landlord_2025-10-12.eml"
-            ]
-        }
-    ]
+            "documents_on_file": ["Lease_2024-12-01.pdf", "Email_Thread_Landlord_2025-10-12.eml"],
+        },
+    ],
 }
 
 # =========================
@@ -131,56 +148,83 @@ When the conversation starts:
 Tone: empathetic, professional, succinct. Avoid legal advice; say: “I’ll route this to your attorney for guidance.” Never invent dates/facts not in the profile or provided by the client.
 """
 
-TOOLS_LEGAL = [{
-    "type": "function",
-    "name": "save_client_followup",
-    "description": "Persist the client’s follow-up summary for the attorney handoff.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "client_id": {"type": "string"},
-            "matter_id": {"type": "string"},
-            "matter_nickname": {"type": "string"},
-            "responsible_attorney": {"type": "string"},
-            "goal": {
-                "type": "string",
-                "enum": ["schedule_call", "case_status", "document_request", "billing",
-                         "settlement_offer", "court_date", "other"]
+TOOLS_LEGAL = [
+    {
+        "type": "function",
+        "name": "save_client_followup",
+        "description": "Persist the client’s follow-up summary for the attorney handoff.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "client_id": {"type": "string"},
+                "matter_id": {"type": "string"},
+                "matter_nickname": {"type": "string"},
+                "responsible_attorney": {"type": "string"},
+                "goal": {
+                    "type": "string",
+                    "enum": [
+                        "schedule_call",
+                        "case_status",
+                        "document_request",
+                        "billing",
+                        "settlement_offer",
+                        "court_date",
+                        "other",
+                    ],
+                },
+                "client_questions": {"type": "array", "items": {"type": "string"}},
+                "facts_summary": {"type": "string"},
+                "deadline_iso": {
+                    "type": "string",
+                    "description": "e.g., 2025-10-28T17:00:00-04:00",
+                },
+                "is_urgent": {"type": "boolean"},
+                "requested_next_action": {"type": "string"},
+                "preferred_contact": {
+                    "type": "string",
+                    "enum": ["email", "phone", "sms", "portal"],
+                },
+                "availability_windows_et": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "days": {"type": "string"},
+                            "from": {"type": "string"},
+                            "to": {"type": "string"},
+                        },
+                    },
+                },
+                "attachments_mentioned": {"type": "array", "items": {"type": "string"}},
+                "consent_to_share_with_firm": {"type": "boolean"},
+                "additional_notes": {"type": "string"},
             },
-            "client_questions": {"type": "array", "items": {"type": "string"}},
-            "facts_summary": {"type": "string"},
-            "deadline_iso": {"type": "string", "description": "e.g., 2025-10-28T17:00:00-04:00"},
-            "is_urgent": {"type": "boolean"},
-            "requested_next_action": {"type": "string"},
-            "preferred_contact": {"type": "string", "enum": ["email", "phone", "sms", "portal"]},
-            "availability_windows_et": {
-                "type": "array",
-                "items": {"type": "object",
-                          "properties": {"days": {"type": "string"},
-                                         "from": {"type": "string"},
-                                         "to": {"type": "string"}}}
-            },
-            "attachments_mentioned": {"type": "array", "items": {"type": "string"}},
-            "consent_to_share_with_firm": {"type": "boolean"},
-            "additional_notes": {"type": "string"}
+            "required": [
+                "client_id",
+                "matter_id",
+                "goal",
+                "client_questions",
+                "preferred_contact",
+                "consent_to_share_with_firm",
+            ],
         },
-        "required": ["client_id", "matter_id", "goal", "client_questions",
-                     "preferred_contact", "consent_to_share_with_firm"]
     }
-}]
+]
 
 # =========================
 # App + in-memory state
 # =========================
-app = FastAPI(title="Lawgorithm (Fixed Greeting)")
+app = FastAPI(title="Lawgorithm (Stable Realtime Bridge)")
 
-followups: Dict[str, Any] = {}         # {call_sid: {"summary": {...}, "saved_at": "..."}}
-active_profiles: Dict[str, Any] = {}   # {call_sid: client_profile}
+followups: Dict[str, Any] = {}  # {call_sid: {"summary": {...}, "saved_at": "..."}}
+active_profiles: Dict[str, Any] = {}  # {call_sid: client_profile}
+
 
 # ---------- Simple pages ----------
-@app.get('/')
+@app.get("/")
 async def root_index():
-    return HTMLResponse("""
+    return HTMLResponse(
+        f"""
     <html><body style="font-family:system-ui;max-width:720px;margin:2rem auto">
       <h1>Lawgorithm</h1>
       <p>Automated check-ins for lawyer/case status via Twilio Media Streams ↔ OpenAI Realtime.</p>
@@ -188,54 +232,66 @@ async def root_index():
         <li><a href="/healthz">/healthz</a> – health check</li>
         <li><a href="/make-call">/make-call</a> – start a call from your browser</li>
       </ul>
-      <p><b>Note:</b> For real calls, set <code>SERVER_DOMAIN</code> to a public HTTPS host (e.g., ngrok).</p>
+      <p><b>Note:</b> Set <code>SERVER_DOMAIN</code> to a public HTTPS host (e.g., ngrok).</p>
+      <p>Current SERVER_DOMAIN: <code>{SERVER_DOMAIN}</code></p>
     </body></html>
-    """)
+    """
+    )
 
-@app.get('/call')
+
+@app.get("/call")
 async def call_alias():
     return RedirectResponse(url="/make-call", status_code=status.HTTP_302_FOUND)
 
-@app.get('/healthz')
+
+@app.get("/healthz")
 async def health_check():
     return {
-        'status': 'ok',
-        'service': 'Lawgorithm',
-        'timestamp': datetime.now(timezone.utc).isoformat()
+        "status": "ok",
+        "service": "Lawgorithm",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
+
 # ---------- Twilio webhooks ----------
-@app.post('/voice')
+@app.post("/voice")
 async def voice_webhook(request: Request):
-    """Twilio incoming call webhook -> returns TwiML that starts the media stream."""
+    """
+    Twilio incoming call webhook -> returns TwiML that starts the media stream.
+    IMPORTANT: Twilio must reach this over HTTPS on your public domain.
+    """
     form = await request.form()
-    caller = form.get('From', 'Unknown')
-    print(f'📞 Lawgorithm: Incoming call from: {caller}')
+    caller = form.get("From", "Unknown")
+    print(f"📞 Lawgorithm: Incoming call from: {caller}")
     vr = VoiceResponse()
     cx = Connect()
-    # Configure stream with explicit track settings to prevent echo/feedback
-    cx.stream(url=f'wss://{SERVER_DOMAIN}/twilio-media', track='both_tracks')
-    vr.append(cx)
-    return PlainTextResponse(str(vr), media_type='application/xml')
 
-@app.post('/call-status')
+    # Use inbound_track only to avoid feedback/echo from both_tracks
+    cx.stream(url=f"wss://{SERVER_DOMAIN}/twilio-media", track="inbound_track")
+    vr.append(cx)
+    return PlainTextResponse(str(vr), media_type="application/xml")
+
+
+@app.post("/call-status")
 async def call_status(request: Request):
     """Optional status callback."""
     form = await request.form()
-    call_sid = form.get('CallSid')
-    status_txt = form.get('CallStatus')
-    print(f'📊 Call status: {status_txt} | SID: {call_sid}')
-    return {'status': 'ok'}
+    call_sid = form.get("CallSid")
+    status_txt = form.get("CallStatus")
+    print(f"📊 Call status: {status_txt} | SID: {call_sid}")
+    return {"status": "ok"}
+
 
 # ---------- Convenience: start an outbound call ----------
-@app.get('/make-call')
+@app.get("/make-call")
 async def make_call_get(to: str = None, clientName: str = None):
     try:
         return await _initiate_call(to, clientName, is_browser=True)
     except Exception as e:
         return HTMLResponse(f"<h1>Error</h1><pre>{e}</pre>", status_code=500)
 
-@app.post('/make-call')
+
+@app.post("/make-call")
 async def make_call_post(request: Request):
     data = {}
     try:
@@ -245,6 +301,7 @@ async def make_call_post(request: Request):
     to = data.get("to")
     client_name = data.get("clientName")
     return await _initiate_call(to, client_name, is_browser=False)
+
 
 async def _initiate_call(to_number: str = None, client_name: str = None, is_browser: bool = False):
     if not to_number:
@@ -277,11 +334,12 @@ async def _initiate_call(to_number: str = None, client_name: str = None, is_brow
             "callSid": call.sid,
             "to": to_number,
             "clientName": client_name,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         if is_browser:
-            return HTMLResponse(f"""
+            return HTMLResponse(
+                f"""
             <html><body style="font-family:system-ui;">
               <h1>✅ Lawgorithm Call Started</h1>
               <p><b>To:</b> {to_number}</p>
@@ -289,7 +347,8 @@ async def _initiate_call(to_number: str = None, client_name: str = None, is_brow
               <p><b>Call SID:</b> {call.sid}</p>
               <p>Loaded example client profile for this call.</p>
               <a href="/make-call">Start another call</a>
-            </body></html>""")
+            </body></html>"""
+            )
         return JSONResponse(result)
 
     except Exception as e:
@@ -298,12 +357,13 @@ async def _initiate_call(to_number: str = None, client_name: str = None, is_brow
             return HTMLResponse(f"<h2>Call Failed</h2><pre>{e}</pre>", status_code=500)
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
+
 # ---------- Media Stream bridge ----------
-@app.websocket('/twilio-media')
+@app.websocket("/twilio-media")
 async def twilio_media_stream(ws: WebSocket):
-    """Twilio <-> OpenAI Realtime audio bridge with post-start greeting fix."""
+    """Twilio <-> OpenAI Realtime audio bridge (stable, buffered, inbound-only)."""
     await ws.accept()
-    print('🔌 Lawgorithm: Twilio WebSocket connected')
+    print("🔌 Lawgorithm: Twilio WebSocket connected")
 
     stream_sid = None
     call_sid = None
@@ -314,18 +374,41 @@ async def twilio_media_stream(ws: WebSocket):
     twilio_packets = 0
     openai_packets = 0
 
+    # Outbound audio buffer (OpenAI -> Twilio), flush ~every 60 ms
+    audio_out_buffer = bytearray()
+    last_flush_ts = time.time()
+    FLUSH_EVERY_SEC = 0.06  # ~60ms @ 8kHz ulaw is ~480 bytes per 60ms
+
+    async def _flush_audio_buffer(force: bool = False):
+        nonlocal audio_out_buffer, last_flush_ts
+        if force or (audio_out_buffer and (time.time() - last_flush_ts) >= FLUSH_EVERY_SEC):
+            try:
+                payload_b64 = base64.b64encode(bytes(audio_out_buffer)).decode("ascii")
+                audio_out_buffer.clear()
+                last_flush_ts = time.time()
+                if stream_sid and connection_active and payload_b64:
+                    await ws.send_json(
+                        {
+                            "event": "media",
+                            "streamSid": stream_sid,
+                            "media": {"payload": payload_b64},
+                        }
+                    )
+            except Exception as e:
+                print(f"⚠️  Failed to flush audio buffer: {e}")
+
     try:
-        print('🔗 Connecting to OpenAI Realtime...')
+        print("🔗 Connecting to OpenAI Realtime...")
         openai_ws = await websockets.connect(
             f"wss://api.openai.com/v1/realtime?model={REALTIME_MODEL}",
             additional_headers={
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "OpenAI-Beta": "realtime=v1"
-            }
+                "OpenAI-Beta": "realtime=v1",
+            },
         )
-        print('✅ OpenAI Realtime connected')
+        print("✅ OpenAI Realtime connected")
 
-        # Configure session (we'll add metadata after Twilio 'start' when we know call_sid)
+        # Initial session config (set codecs + tools; metadata is attached later after Twilio start)
         session_update = {
             "type": "session.update",
             "session": {
@@ -339,38 +422,36 @@ async def twilio_media_stream(ws: WebSocket):
                     "type": "server_vad",
                     "threshold": 0.6,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 700
+                    "silence_duration_ms": 700,
                 },
                 "tools": TOOLS_LEGAL,
                 "temperature": 0.8,
-                "max_response_output_tokens": "inf"
-            }
+                "max_response_output_tokens": "inf",
+            },
         }
         await openai_ws.send(json.dumps(session_update))
 
         async def handle_openai():
             nonlocal openai_packets, call_sid, connection_active
-            async for raw in openai_ws:
-                try:
+            try:
+                async for raw in openai_ws:
                     evt = json.loads(raw)
                     etype = evt.get("type")
 
                     if etype == "session.updated":
                         print("🧩 Session updated with Lawgorithm config")
-                        # No greeting here — we wait for Twilio 'start'
 
                     elif etype == "response.audio.delta":
-                        delta = evt.get("delta")
-                        if delta and stream_sid and connection_active:
-                            openai_packets += 1
+                        # Buffer deltas; flush on cadence for clean audio to Twilio
+                        delta_b64 = evt.get("delta")
+                        if delta_b64 and connection_active:
                             try:
-                                await ws.send_json({
-                                    "event": "media",
-                                    "streamSid": stream_sid,
-                                    "media": {"payload": delta}
-                                })
+                                chunk = base64.b64decode(delta_b64)
+                                audio_out_buffer.extend(chunk)
+                                openai_packets += 1
+                                await _flush_audio_buffer(force=False)
                             except Exception as send_err:
-                                print(f"⚠️  Failed to send audio to Twilio (connection may be closed): {send_err}")
+                                print(f"⚠️  audio forward error: {send_err}")
                                 connection_active = False
                                 break
 
@@ -391,90 +472,104 @@ async def twilio_media_stream(ws: WebSocket):
                             if call_sid:
                                 followups.setdefault(call_sid, {})
                                 followups[call_sid]["summary"] = args
-                                followups[call_sid]["saved_at"] = datetime.now(timezone.utc).isoformat()
+                                followups[call_sid]["saved_at"] = datetime.now(
+                                    timezone.utc
+                                ).isoformat()
 
                             # Acknowledge tool output
-                            await openai_ws.send(json.dumps({
-                                "type": "conversation.item.create",
-                                "item": {
-                                    "type": "function_call_output",
-                                    "call_id": evt.get("call_id"),
-                                    "output": json.dumps({"success": True})
-                                }
-                            }))
+                            await openai_ws.send(
+                                json.dumps(
+                                    {
+                                        "type": "conversation.item.create",
+                                        "item": {
+                                            "type": "function_call_output",
+                                            "call_id": evt.get("call_id"),
+                                            "output": json.dumps({"success": True}),
+                                        },
+                                    }
+                                )
+                            )
                             await openai_ws.send(json.dumps({"type": "response.create"}))
-
-                except Exception as e:
-                    print(f"❌ OpenAI handler error: {e}")
+            except Exception as e:
+                print(f"❌ OpenAI handler error: {e}")
+                connection_active = False
 
         async def handle_twilio():
             nonlocal stream_sid, call_sid, twilio_packets, greet_sent, openai_ws, connection_active
             try:
                 async for text in ws.iter_text():
-                    try:
-                        msg = json.loads(text)
-                        ev = msg.get("event")
+                    msg = json.loads(text)
+                    ev = msg.get("event")
 
-                        if ev == "start":
-                            stream_sid = msg["start"]["streamSid"]
-                            call_sid = msg["start"]["callSid"]
-                            print(f"🎬 Media stream started | Call SID: {call_sid}")
+                    if ev == "start":
+                        stream_sid = msg["start"]["streamSid"]
+                        call_sid = msg["start"]["callSid"]
+                        print(f"🎬 Media stream started | Call SID: {call_sid}")
 
-                            # Attach client profile as session metadata now that we have call_sid
-                            client_profile = active_profiles.get(call_sid) or SAMPLE_CLIENT_PROFILE
-                            await openai_ws.send(json.dumps({
-                                "type": "session.update",
-                                "session": {"metadata": {"client_profile": client_profile}}
-                            }))
-                            print("🧾 Attached client_profile metadata to session")
+                        # Attach client profile as session metadata now that we have call_sid
+                        client_profile = active_profiles.get(call_sid) or SAMPLE_CLIENT_PROFILE
+                        await openai_ws.send(
+                            json.dumps(
+                                {
+                                    "type": "session.update",
+                                    "session": {"metadata": {"client_profile": client_profile}},
+                                }
+                            )
+                        )
+                        print("🧾 Attached client_profile metadata to session")
 
-                            # Trigger greeting exactly once (now streamSid exists)
-                            if not greet_sent:
-                                greet_sent = True
-                                await openai_ws.send(json.dumps({
-                                    "type": "response.create",
-                                    "response": {
-                                        "modalities": ["text", "audio"],
-                                        "instructions": (
-                                            "Start the follow-up. Greet, disclose not-legal-advice, "
-                                            "verify the client with two soft checks, and list matters to choose from."
-                                        )
+                        # Trigger greeting exactly once (now streamSid exists)
+                        if not greet_sent:
+                            greet_sent = True
+                            await openai_ws.send(
+                                json.dumps(
+                                    {
+                                        "type": "response.create",
+                                        "response": {
+                                            "modalities": ["text", "audio"],
+                                            "instructions": (
+                                                "Start the follow-up. Greet, disclose not-legal-advice, "
+                                                "verify the client with two soft checks, and list matters to choose from."
+                                            ),
+                                        },
                                     }
-                                }))
+                                )
+                            )
 
-                        elif ev == "media":
-                            twilio_packets += 1
-                            await openai_ws.send(json.dumps({
-                                "type": "input_audio_buffer.append",
-                                "audio": msg["media"]["payload"]
-                            }))
+                    elif ev == "media":
+                        # Incoming 8k ulaw audio from Twilio → forward to OpenAI
+                        twilio_packets += 1
+                        await openai_ws.send(
+                            json.dumps(
+                                {
+                                    "type": "input_audio_buffer.append",
+                                    "audio": msg["media"]["payload"],
+                                }
+                            )
+                        )
 
-                        elif ev == "stop":
-                            print(f"⏹️  Stream stopped. Packets: {twilio_packets}")
-                            connection_active = False
-                            break
+                    elif ev == "mark":
+                        # can be ignored or used for latency metrics
+                        pass
 
-                    except Exception as e:
-                        print(f"❌ Twilio WS handler error: {e}")
+                    elif ev == "stop":
+                        print(f"⏹️  Stream stopped. Packets in: {twilio_packets}")
+                        connection_active = False
+                        break
+
             except Exception as e:
-                print(f"❌ Twilio WebSocket connection error: {e}")
+                print(f"❌ Twilio WS handler error: {e}")
                 connection_active = False
 
-        # Optional heartbeat (debug)
         async def _pinger():
+            """Optional heartbeat + periodic forced flush for audio buffer."""
             nonlocal connection_active
             try:
                 while connection_active:
-                    await asyncio.sleep(20)
-                    if not connection_active:
-                        break
-                    print(f"⏱️ heartbeat | twilio_packets={twilio_packets} | openai_packets={openai_packets}")
-                    if openai_ws:
-                        try:
-                            await openai_ws.send(json.dumps({"type": "ping"}))
-                        except Exception:
-                            connection_active = False
-                            break
+                    await asyncio.sleep(0.2)
+                    await _flush_audio_buffer(force=False)
+                # final flush on exit
+                await _flush_audio_buffer(force=True)
             except Exception:
                 pass
 
@@ -484,23 +579,25 @@ async def twilio_media_stream(ws: WebSocket):
         print(f"❌ WebSocket bridge error: {e}")
 
     finally:
-        connection_active = False  # Ensure connection is marked inactive
-        print("🔌 Closing connections")
+        try:
+            # final flush if anything remains
+            await _flush_audio_buffer(force=True)
+        except Exception:
+            pass
 
-        # Close OpenAI WebSocket
+        print("🔌 Closing connections")
         if openai_ws:
             try:
                 await openai_ws.close()
             except Exception as e:
                 print(f"⚠️  Error closing OpenAI WebSocket: {e}")
-
-        # Close Twilio WebSocket
         try:
             await ws.close()
         except Exception as e:
             print(f"⚠️  Error closing Twilio WebSocket: {e}")
 
-# ---------- (Optional) Fetch the saved follow-up by Call SID ----------
+
+# ---------- Fetch the saved follow-up by Call SID ----------
 @app.get("/followup")
 async def get_followup(callSid: str):
     data = followups.get(callSid)
@@ -508,9 +605,11 @@ async def get_followup(callSid: str):
         return JSONResponse({"success": False, "error": "Not found"}, status_code=404)
     return JSONResponse({"success": True, "callSid": callSid, "data": data})
 
+
 # ---------- Local dev entry ----------
 if __name__ == "__main__":
     import uvicorn
+
     print("🏛️  Starting Lawgorithm Call Service...")
     print(f"📞 Default phone number: {DEFAULT_PHONE_NUMBER}")
     print(f"🌐 SERVER_DOMAIN: {SERVER_DOMAIN}")
@@ -527,4 +626,4 @@ if __name__ == "__main__":
     if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, OPENAI_API_KEY]):
         print("⚠️  WARNING: Missing required environment variables; calls will fail.")
 
-    uvicorn.run(app, host="localhost", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

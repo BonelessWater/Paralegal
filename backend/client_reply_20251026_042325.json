@@ -1,0 +1,14 @@
+{
+  "auto_send": false,
+  "body": "Dear \"github-advanced-security[bot]\",\n\nThank you for your email. I have received your message and am reviewing the information you provided.\n\nI will look into this matter and get back to you with a detailed response within 1-2 business days.\n\nIf you need immediate assistance, please don't hesitate to contact our office directly.\n\nBest regards,\nParalegal AI Assistant\nLaw Office\n\n**This is an automated initial response. A licensed attorney will review your case and follow up with you directly.**",
+  "classification": "general_inquiry",
+  "from": "paralegal@lawoffice.com",
+  "from_name": "Paralegal AI Assistant",
+  "in_reply_to": "",
+  "original_subject": "Re: [BonelessWater/Paralegal] Review and Optimize Project Code (PR",
+  "requires_review": true,
+  "subject": "Re: [BonelessWater/Paralegal] Review and Optimize Project Code (PR",
+  "timestamp": "2025-10-26T08:23:22.068902",
+  "to": "notifications@github.com",
+  "to_name": "\"github-advanced-security[bot]\""
+}
