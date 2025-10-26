@@ -287,6 +287,13 @@ class MultiAgentLegalResearcher:
             'workers compensation', 'flsa', 'ada claim', 'hostile work environment'
         ]
         
+        # Tax law indicators (to filter out when question is not tax-related)
+        tax_indicators = [
+            'internal revenue code', 'irc', 'tax court', 'commissioner of internal revenue',
+            'deficiency', 'taxable income', 'deduction', 'irs', 'income tax return',
+            'additions to tax', 'accuracy-related penalty', 'failure to file'
+        ]
+        
         filtered_cases = []
         filtered_out_count = 0
         
@@ -315,6 +322,12 @@ class MultiAgentLegalResearcher:
                 if any(indicator in combined_text for indicator in employment_indicators) and not any(term in combined_text for term in ['premises', 'slip', 'fall']):
                     should_filter = True
                     reason = "employment law (question is premises liability)"
+            
+            # Filter tax cases if question is not tax-related
+            if not any(term in question_lower for term in ['tax', 'irs', 'revenue', 'deduction']):
+                if any(indicator in combined_text for indicator in tax_indicators):
+                    should_filter = True
+                    reason = "tax law (question is not tax-related)"
             
             if should_filter:
                 filtered_out_count += 1
