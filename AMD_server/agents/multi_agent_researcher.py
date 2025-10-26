@@ -66,7 +66,7 @@ class MultiAgentLegalResearcher:
     different perspectives, then synthesizes findings across multiple cycles.
     """
     
-    def __init__(self, llm_client, batch_size: int = 10, max_cycles: int = 3):
+    def __init__(self, llm_client, batch_size: int = 10, max_cycles: int = 3, enable_multi_stage_synthesis: bool = True):
         """
         Initialize multi-agent researcher.
         
@@ -74,10 +74,12 @@ class MultiAgentLegalResearcher:
             llm_client: LLM client for agent reasoning
             batch_size: Number of cases to analyze per cycle
             max_cycles: Maximum refinement cycles
+            enable_multi_stage_synthesis: Use 4-stage synthesis pipeline (default: True)
         """
         self.llm = llm_client
         self.batch_size = batch_size
         self.max_cycles = max_cycles
+        self.enable_multi_stage_synthesis = enable_multi_stage_synthesis
         self.research_cycles: List[ResearchCycle] = []
         
         # Agent prompts
@@ -88,7 +90,8 @@ class MultiAgentLegalResearcher:
             AgentRole.SYNTHESIS: self._synthesis_prompt()
         }
         
-        logger.info(f"Initialized multi-agent researcher (batch_size={batch_size}, max_cycles={max_cycles})")
+        synthesis_mode = "4-stage pipeline" if enable_multi_stage_synthesis else "single-shot"
+        logger.info(f"Initialized multi-agent researcher (batch_size={batch_size}, max_cycles={max_cycles}, synthesis={synthesis_mode})")
     
     async def _filter_top_cases_with_rag(self, question: str, cases: List[Dict], top_n: int = 10) -> List[Dict]:
         """
@@ -666,9 +669,338 @@ Quote specific passages."""
         logger.debug(f"    ✓ Legal Principles: {len(findings)} findings")
         return findings
     
+    # ========================================================================
+    # 4-STAGE SYNTHESIS PIPELINE (NEW - OPTION A)
+    # ========================================================================
+    
+    async def _synthesize_findings_multi_stage(self, question: str, findings: List[AgentFinding], all_cases: List[Dict]) -> str:
+        """
+        NEW: 4-stage synthesis pipeline that breaks down synthesis into smaller LLM calls.
+        
+        Stages:
+        1. Organizer - Groups findings by topic/theme
+        2. Section Writers (parallel) - Write distinct memo sections
+        3. Integration - Combines sections into cohesive narrative
+        4. Quality Checker - Validates formatting, citations, completeness
+        
+        Args:
+            question: Research question
+            findings: All agent findings
+            all_cases: All cases analyzed
+            
+        Returns:
+            Comprehensive legal memo
+        """
+        logger.info("=" * 70)
+        logger.info("🔬 MULTI-STAGE SYNTHESIS PIPELINE")
+        logger.info("=" * 70)
+        
+        # Stage 1: Organize findings into topics
+        logger.info("\n📋 STAGE 1: Organizing findings by topic...")
+        organized_topics = await self._organize_findings(question, findings)
+        logger.info(f"✓ Organized into {len(organized_topics)} topics")
+        
+        # Stage 2: Write sections in parallel (3 agents)
+        logger.info("\n✍️  STAGE 2: Writing memo sections (parallel)...")
+        sections = await self._write_sections_parallel(question, findings, organized_topics, all_cases)
+        logger.info(f"✓ Generated {len(sections)} sections")
+        
+        # Stage 3: Integrate sections into cohesive memo
+        logger.info("\n🔗 STAGE 3: Integrating sections...")
+        integrated_memo = await self._integrate_sections(question, sections)
+        logger.info(f"✓ Integrated memo ({len(integrated_memo)} chars)")
+        
+        # Stage 4: Quality check
+        logger.info("\n✅ STAGE 4: Quality checking...")
+        final_memo = await self._quality_check_memo(integrated_memo, findings)
+        logger.info(f"✓ Final memo ready ({len(final_memo)} chars)")
+        
+        logger.info("=" * 70)
+        logger.info("✅ MULTI-STAGE SYNTHESIS COMPLETE")
+        logger.info("=" * 70)
+        
+        return final_memo
+    
+    async def _organize_findings(self, question: str, findings: List[AgentFinding]) -> Dict[str, List[AgentFinding]]:
+        """
+        STAGE 1: Organize findings into topic clusters.
+        Uses small LLM prompt to identify themes across all findings.
+        
+        Returns:
+            Dictionary mapping topic names to lists of findings
+        """
+        # Organize findings by agent type first
+        case_analyses = [f for f in findings if f.agent_role == AgentRole.CASE_ANALYST]
+        precedents = [f for f in findings if f.agent_role == AgentRole.PRECEDENT_HUNTER]
+        principles = [f for f in findings if f.agent_role == AgentRole.LEGAL_PRINCIPLES]
+        
+        # Create compact summaries for topic identification (keep prompt small)
+        finding_summaries = []
+        for i, f in enumerate(findings[:15]):  # Limit to 15 findings for topic analysis
+            summary = f"{i+1}. [{f.agent_role.value}] {f.case_name}: {f.finding[:150]}..."
+            finding_summaries.append(summary)
+        
+        prompt = f"""Analyze these {len(finding_summaries)} legal research findings and identify 3-5 major topics/themes.
+
+RESEARCH QUESTION: {question}
+
+FINDINGS:
+{chr(10).join(finding_summaries)}
+
+Identify the main legal topics or themes these findings address (e.g., "duty of care", "causation", "damages", "statute of limitations").
+
+Respond in this format:
+1. [Topic Name]: Brief description
+2. [Topic Name]: Brief description
+3. [Topic Name]: Brief description
+
+Be concise - just topic names and 1-line descriptions."""
+
+        response = await self._ask_llm(prompt, max_tokens=400, temperature=0.3)
+        
+        # Parse topics from response (simple parsing - look for numbered lines)
+        topics = {}
+        for line in response.split('\n'):
+            line = line.strip()
+            if line and (line[0].isdigit() or line.startswith('-')):
+                # Extract topic name (text before colon)
+                if ':' in line:
+                    topic_part = line.split(':', 1)[0]
+                    # Remove number/bullet
+                    topic_name = topic_part.lstrip('0123456789.-) ').strip()
+                    if topic_name:
+                        topics[topic_name] = []
+        
+        # If parsing failed, create default topics by agent type
+        if not topics:
+            logger.warning("Topic parsing failed, using default organization")
+            topics = {
+                "Case Analysis": case_analyses,
+                "Precedent Review": precedents,
+                "Legal Principles": principles
+            }
+            return topics
+        
+        # Assign findings to topics (simple keyword matching for now)
+        # In production, could use embeddings for better assignment
+        for topic_name in topics.keys():
+            topics[topic_name] = findings  # For now, all findings available to all topics
+        
+        logger.debug(f"Identified topics: {', '.join(topics.keys())}")
+        return topics
+    
+    async def _write_sections_parallel(self, 
+                                       question: str, 
+                                       findings: List[AgentFinding],
+                                       topics: Dict[str, List[AgentFinding]],
+                                       all_cases: List[Dict]) -> Dict[str, str]:
+        """
+        STAGE 2: Write 3 memo sections in parallel using specialized section writers.
+        Each section writer gets only the findings relevant to their section.
+        
+        Returns:
+            Dictionary mapping section names to section content
+        """
+        # Run 3 section writers in parallel
+        tasks = [
+            self._write_legal_framework_section(question, findings, topics),
+            self._write_case_analysis_section(question, findings, all_cases),
+            self._write_practical_guidance_section(question, findings)
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        sections = {}
+        section_names = ["Legal Framework", "Case Analysis", "Practical Guidance"]
+        
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Section writer {section_names[i]} error: {result}")
+                sections[section_names[i]] = f"[Error generating {section_names[i]} section]"
+            else:
+                sections[section_names[i]] = result
+        
+        return sections
+    
+    async def _write_legal_framework_section(self, 
+                                             question: str, 
+                                             findings: List[AgentFinding],
+                                             topics: Dict[str, List[AgentFinding]]) -> str:
+        """Section Writer 1: Legal Framework - principles, doctrines, tests"""
+        # Get only legal principles findings
+        principles = [f for f in findings if f.agent_role == AgentRole.LEGAL_PRINCIPLES]
+        
+        # Build compact context (max 5 findings to keep prompt small)
+        context = "LEGAL PRINCIPLES IDENTIFIED:\n\n"
+        for f in principles[:5]:
+            context += f"{f.case_name}:\n{f.finding[:600]}\n\n"
+        
+        prompt = f"""You are writing the LEGAL FRAMEWORK section of a legal research memo.
+
+RESEARCH QUESTION: {question}
+
+{context}
+
+Write a concise Legal Framework section (8-12 lines) covering:
+1. Governing legal principles and doctrines
+2. Applicable legal tests or standards
+3. Key statutes or rules
+4. Burdens of proof or standards of review
+
+Use proper legal citation format. Be concise and well-organized."""
+
+        response = await self._ask_llm(prompt, max_tokens=800, temperature=0.4)
+        return response.strip()
+    
+    async def _write_case_analysis_section(self, 
+                                           question: str, 
+                                           findings: List[AgentFinding],
+                                           all_cases: List[Dict]) -> str:
+        """Section Writer 2: Case Analysis - deep dive into key cases"""
+        # Get case analyst and precedent hunter findings
+        case_findings = [f for f in findings if f.agent_role in [AgentRole.CASE_ANALYST, AgentRole.PRECEDENT_HUNTER]]
+        
+        # Build context (top 5 cases)
+        context = "KEY CASES ANALYZED:\n\n"
+        for f in case_findings[:5]:
+            context += f"{f.case_name}:\n{f.finding[:600]}\n\n"
+        
+        prompt = f"""You are writing the CASE ANALYSIS section of a legal research memo.
+
+RESEARCH QUESTION: {question}
+
+{context}
+
+Write a Case Analysis section (10-15 lines) covering:
+1. Most relevant cases and their holdings
+2. How precedents apply to the research question
+3. Distinguishing factors between cases
+4. Trends or patterns across cases
+
+Quote key passages and use proper citations. Be analytical."""
+
+        response = await self._ask_llm(prompt, max_tokens=1000, temperature=0.4)
+        return response.strip()
+    
+    async def _write_practical_guidance_section(self, 
+                                                question: str, 
+                                                findings: List[AgentFinding]) -> str:
+        """Section Writer 3: Practical Guidance - settlement ranges, strategy, recommendations"""
+        # Use all finding types for practical guidance
+        context = "RESEARCH FINDINGS SUMMARY:\n\n"
+        
+        # Get diverse findings (2 from each type)
+        for role in [AgentRole.CASE_ANALYST, AgentRole.PRECEDENT_HUNTER, AgentRole.LEGAL_PRINCIPLES]:
+            role_findings = [f for f in findings if f.agent_role == role][:2]
+            for f in role_findings:
+                context += f"{f.case_name} ({f.agent_role.value}): {f.finding[:400]}...\n\n"
+        
+        prompt = f"""You are writing the PRACTICAL GUIDANCE section of a legal research memo.
+
+RESEARCH QUESTION: {question}
+
+{context}
+
+Write a Practical Guidance section (8-12 lines) covering:
+1. Settlement considerations (if applicable)
+2. Strongest legal arguments based on precedent
+3. Potential weaknesses or counterarguments
+4. Recommended next steps or strategy
+
+Be practical and actionable. Focus on real-world application."""
+
+        response = await self._ask_llm(prompt, max_tokens=800, temperature=0.5)
+        return response.strip()
+    
+    async def _integrate_sections(self, question: str, sections: Dict[str, str]) -> str:
+        """
+        STAGE 3: Integration Agent - combines sections into cohesive memo.
+        
+        This is much smaller than the old synthesis because each section
+        is already written (8-15 lines each = ~3000 chars total).
+        """
+        sections_text = ""
+        for section_name, content in sections.items():
+            sections_text += f"\n{section_name.upper()}:\n{content}\n"
+        
+        prompt = f"""You are integrating separately-written memo sections into a cohesive legal research memo.
+
+RESEARCH QUESTION: {question}
+
+SECTIONS TO INTEGRATE:
+{sections_text}
+
+Create a well-structured legal memo with:
+
+1. EXECUTIVE SUMMARY (3-5 lines)
+   - Brief overview of the issue and key findings
+
+2. LEGAL FRAMEWORK
+   {sections.get('Legal Framework', '[Not provided]')}
+
+3. CASE LAW ANALYSIS  
+   {sections.get('Case Analysis', '[Not provided]')}
+
+4. PRACTICAL GUIDANCE
+   {sections.get('Practical Guidance', '[Not provided]')}
+
+Add smooth transitions between sections. Ensure consistent tone and citation format.
+Total memo should be 25-35 lines."""
+
+        response = await self._ask_llm(prompt, max_tokens=2000, temperature=0.4)
+        return response.strip()
+    
+    async def _quality_check_memo(self, memo: str, findings: List[AgentFinding]) -> str:
+        """
+        STAGE 4: Quality Checker - validates formatting, citations, completeness.
+        
+        Uses small prompt to check quality and fix any issues.
+        """
+        # Count findings by type for validation
+        case_count = len([f for f in findings if f.agent_role == AgentRole.CASE_ANALYST])
+        precedent_count = len([f for f in findings if f.agent_role == AgentRole.PRECEDENT_HUNTER])
+        principle_count = len([f for f in findings if f.agent_role == AgentRole.LEGAL_PRINCIPLES])
+        
+        prompt = f"""Review this legal research memo for quality and completeness.
+
+MEMO TO REVIEW:
+{memo}
+
+VALIDATION CHECKLIST:
+✓ Has Executive Summary
+✓ Has Legal Framework section
+✓ Has Case Analysis section  
+✓ Has Practical Guidance section
+✓ Uses proper legal citations
+✓ Well-organized and readable
+✓ Incorporates insights from {case_count} case analyses, {precedent_count} precedent reviews, {principle_count} legal principles
+
+If the memo is complete and well-formatted, return it as-is.
+If there are minor formatting issues, fix them and return the corrected memo.
+If major content is missing, add a brief note at the end indicating what's missing.
+
+Return only the final memo (no commentary)."""
+
+        response = await self._ask_llm(prompt, max_tokens=2500, temperature=0.3)
+        return response.strip()
+    
+    # ========================================================================
+    # ORIGINAL SINGLE-SHOT SYNTHESIS (FALLBACK)
+    # ========================================================================
+    
     async def _synthesize_findings(self, question: str, findings: List[AgentFinding], all_cases: List[Dict]) -> str:
-        """Synthesis Agent: Combine all findings into comprehensive memo"""
-        logger.debug(f"  📝 Synthesis Agent combining {len(findings)} findings...")
+        """
+        ORIGINAL: Single-shot synthesis (kept as fallback).
+        
+        If enable_multi_stage_synthesis=True, this method calls the new 4-stage pipeline.
+        If enable_multi_stage_synthesis=False, uses old single-shot approach.
+        """
+        if self.enable_multi_stage_synthesis:
+            # Use new 4-stage pipeline
+            return await self._synthesize_findings_multi_stage(question, findings, all_cases)
+        
+        # FALLBACK: Original single-shot synthesis
+        logger.debug(f"  📝 Synthesis Agent combining {len(findings)} findings (single-shot mode)...")
         
         # Organize findings by agent type
         case_analyses = [f for f in findings if f.agent_role == AgentRole.CASE_ANALYST]
