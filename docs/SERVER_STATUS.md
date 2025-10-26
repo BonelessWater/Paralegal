@@ -12,6 +12,12 @@
 - **Python Version:** 3.12
 - **Status:** ✅ Active virtual environment
 
+### LLM Server Configuration
+- **Model:** Equall/Saul-7B-Instruct-v1 (Legal-specific LLM)
+- **Server:** vLLM at http://localhost:8000/v1
+- **API Format:** OpenAI-compatible
+- **Status:** ❓ Unknown (need to check if vLLM is running)
+
 ### Database Configuration
 ```bash
 DB_HOST=localhost
@@ -63,23 +69,51 @@ HF_HOME=/home/amd-knights/Paralegal/.cache/huggingface
 
 ---
 
+## 🔍 LLM Configuration Discovery
+
+### ✅ FOUND: Working LLM Setup in ADK
+
+**Location:** `/home/amd-knights/Paralegal/AMD_server/ADK/researcher.py`
+
+**Configuration (lines 48-50):**
+```python
+SAUL_BASE_URL = os.getenv("SAUL_BASE_URL", "http://localhost:8000/v1")
+SAUL_MODEL    = os.getenv("SAUL_MODEL", "Equall/Saul-7B-Instruct-v1")
+_client = OpenAI(base_url=SAUL_BASE_URL, api_key=os.getenv("SAUL_API_KEY","dummy"))
+```
+
+**Key Details:**
+- **Model:** Equall/Saul-7B-Instruct-v1 (legal-specific LLM)
+- **Server:** vLLM at http://localhost:8000/v1
+- **API Format:** OpenAI-compatible
+- **Function:** `saul_complete_sync(prompt, max_tokens, temperature)`
+
+**This is the ACTUAL working LLM infrastructure!**
+
+---
+
 ## ❌ Missing Files (Referenced but Don't Exist)
 
-### Critical Missing Components
+### Test Infrastructure (Not Critical - ADK Works Without Them)
 
 1. **`backend/APIs/AMD/llm_client.py`** - DOES NOT EXIST
    - Referenced in: `test_agents.py`, `test_rag_agent.py`
    - Expected class: `AMDLLMClient`
    - Expected method: `.simple_prompt()`
+   - **Alternative:** Use `saul_complete_sync()` from researcher.py
 
 2. **`config/amd_config.py`** - DOES NOT EXIST
    - Referenced in: `test_agents.py`, `test_rag_agent.py`
    - Expected class: `AMDConfig`
    - Expected properties: `VLLM_BASE_URL`, `MODEL_FOLDER`, `MODEL_NAME`
+   - **Alternative:** Use environment variables (SAUL_BASE_URL, SAUL_MODEL)
 
 3. **`.env` Configuration** - INCOMPLETE
    - Current .env only has database + HuggingFace cache
-   - Missing: `MODEL_FOLDER`, `VLLM_BASE_URL`, `MODEL_NAME`, `SAUL_*` vars
+   - Should add (optional, has defaults):
+     - `SAUL_BASE_URL=http://localhost:8000/v1`
+     - `SAUL_MODEL=Equall/Saul-7B-Instruct-v1`
+     - `SAUL_API_KEY=dummy`
 
 ---
 
@@ -163,10 +197,11 @@ class AMDConfig:
 | RAG Embeddings | ✅ Working | 39 docs, HNSW index, GPU accelerated |
 | Database | ✅ Working | PostgreSQL with legal documents |
 | Python Environment | ✅ Working | venv with all ML dependencies |
-| LLM Client | ❌ Missing | `AMDLLMClient` doesn't exist |
-| Config Module | ❌ Missing | `AMDConfig` doesn't exist |
-| Agent Tests | ❌ Broken | Require missing LLM infrastructure |
-| RAG Integration | ✅ Complete | Legal researcher agent ready, needs LLM |
+| LLM (Saul-7B) | ❓ Unknown | Configured but need to check if running |
+| vLLM Server | ❓ Unknown | Expected at localhost:8000 |
+| ADK Researcher | ✅ Code Ready | Full orchestration system exists |
+| Test Scripts (agents) | ❌ Broken | Require AMDLLMClient wrapper |
+| RAG Integration | ✅ Complete | Legal researcher agent ready |
 
 ---
 
@@ -174,17 +209,56 @@ class AMDConfig:
 
 ### Immediate Next Steps
 
-1. **Create basic LLM client** using OpenAI API format (like llm_saul.py)
-2. **Create config module** to load from .env
-3. **Update .env** with model configuration
-4. **Test agent with real LLM** using test_agents.py
+1. **Check if vLLM is running:**
+   ```bash
+   curl http://localhost:8000/v1/models
+   # OR
+   docker ps | grep vllm
+   # OR
+   ps aux | grep vllm
+   ```
+
+2. **If vLLM is NOT running, start it:**
+   ```bash
+   # Check for startup script
+   ls ~/Paralegal/setup/*vllm*
+   ls ~/Paralegal/AMD_server/setup/*vllm*
+   ```
+
+3. **Test Saul integration directly:**
+   ```bash
+   python -c "
+   import os
+   from openai import OpenAI
+   
+   client = OpenAI(
+       base_url='http://localhost:8000/v1',
+       api_key='dummy'
+   )
+   
+   response = client.completions.create(
+       model='Equall/Saul-7B-Instruct-v1',
+       prompt='What is a tort?',
+       max_tokens=100
+   )
+   
+   print(response.choices[0].text)
+   "
+   ```
+
+4. **Create simple LLM client wrapper** (to make test_agents.py work):
+   - Wrap `saul_complete_sync()` from researcher.py
+   - Make it compatible with agent expectations
+   - Use existing OpenAI client infrastructure
 
 ### Alternative Approach
 
-Instead of creating missing infrastructure, **use the RAG system standalone** for now:
-- RAG is fully functional and working great
-- Can integrate with whatever LLM client you end up using
-- Legal researcher agent is ready, just needs LLM connection
+**The ADK system already works!** Use it directly instead of test_agents.py:
+```bash
+# Test the actual working system
+cd ~/Paralegal/AMD_server/ADK
+python researcher.py --issue "car accident liability" --jurisdiction "Florida"
+```
 
 ---
 
