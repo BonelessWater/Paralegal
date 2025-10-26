@@ -919,33 +919,33 @@ Be practical and actionable. Focus on real-world application."""
         This is much smaller than the old synthesis because each section
         is already written (8-15 lines each = ~3000 chars total).
         """
-        sections_text = ""
-        for section_name, content in sections.items():
-            sections_text += f"\n{section_name.upper()}:\n{content}\n"
-        
         prompt = f"""You are integrating separately-written memo sections into a cohesive legal research memo.
 
 RESEARCH QUESTION: {question}
 
-SECTIONS TO INTEGRATE:
-{sections_text}
-
-Create a well-structured legal memo with:
+Create a well-structured legal memo with these sections:
 
 1. EXECUTIVE SUMMARY (3-5 lines)
-   - Brief overview of the issue and key findings
+   - Brief overview of the liability standard for this type of case
+   - Key takeaways from the research
 
 2. LEGAL FRAMEWORK
-   {sections.get('Legal Framework', '[Not provided]')}
+{sections.get('Legal Framework', '[Not provided]')}
 
 3. CASE LAW ANALYSIS  
-   {sections.get('Case Analysis', '[Not provided]')}
+{sections.get('Case Analysis', '[Not provided]')}
 
 4. PRACTICAL GUIDANCE
-   {sections.get('Practical Guidance', '[Not provided]')}
+{sections.get('Practical Guidance', '[Not provided]')}
 
-Add smooth transitions between sections. Ensure consistent tone and citation format.
-Total memo should be 25-35 lines."""
+OUTPUT FORMAT:
+- Add executive summary at the top
+- Use section headers (EXECUTIVE SUMMARY, LEGAL FRAMEWORK, etc.)
+- Add brief transitions between sections
+- Ensure consistent tone and citation format
+- Total memo should be 25-35 lines
+
+Write the complete integrated memo now:"""
 
         response = await self._ask_llm(prompt, max_tokens=2000, temperature=0.4)
         return response.strip()
@@ -961,25 +961,20 @@ Total memo should be 25-35 lines."""
         precedent_count = len([f for f in findings if f.agent_role == AgentRole.PRECEDENT_HUNTER])
         principle_count = len([f for f in findings if f.agent_role == AgentRole.LEGAL_PRINCIPLES])
         
-        prompt = f"""Review this legal research memo for quality and completeness.
+        prompt = f"""You are reviewing a legal research memo. Your job is to return the FULL memo text, with any necessary corrections.
 
-MEMO TO REVIEW:
+MEMO TEXT:
 {memo}
 
-VALIDATION CHECKLIST:
-✓ Has Executive Summary
-✓ Has Legal Framework section
-✓ Has Case Analysis section  
-✓ Has Practical Guidance section
-✓ Uses proper legal citations
-✓ Well-organized and readable
-✓ Incorporates insights from {case_count} case analyses, {precedent_count} precedent reviews, {principle_count} legal principles
+INSTRUCTIONS:
+1. Read the memo above carefully
+2. Check if it has: Executive Summary, Legal Framework, Case Analysis, Practical Guidance
+3. Check if it incorporates {case_count} case analyses, {precedent_count} precedent reviews, {principle_count} legal principles
+4. If the memo is complete and well-formatted: OUTPUT THE ENTIRE MEMO TEXT EXACTLY AS WRITTEN
+5. If there are minor issues: Fix them and output the corrected full memo
+6. DO NOT just say "it's complete" - you MUST output the actual memo text
 
-If the memo is complete and well-formatted, return it as-is.
-If there are minor formatting issues, fix them and return the corrected memo.
-If major content is missing, add a brief note at the end indicating what's missing.
-
-Return only the final memo (no commentary)."""
+OUTPUT THE COMPLETE MEMO NOW (all sections, all text):"""
 
         response = await self._ask_llm(prompt, max_tokens=2500, temperature=0.3)
         return response.strip()
