@@ -66,14 +66,14 @@ class MultiAgentLegalResearcher:
     different perspectives, then synthesizes findings across multiple cycles.
     """
     
-    def __init__(self, llm_client, batch_size: int = 10, max_cycles: int = 3, enable_multi_stage_synthesis: bool = True):
+    def __init__(self, llm_client, batch_size: int = 10, max_cycles: int = 2, enable_multi_stage_synthesis: bool = True):
         """
         Initialize multi-agent researcher.
         
         Args:
             llm_client: LLM client for agent reasoning
             batch_size: Number of cases to analyze per cycle
-            max_cycles: Maximum refinement cycles
+            max_cycles: Maximum refinement cycles (default: 2 for performance)
             enable_multi_stage_synthesis: Use 4-stage synthesis pipeline (default: True)
         """
         self.llm = llm_client
@@ -81,6 +81,7 @@ class MultiAgentLegalResearcher:
         self.max_cycles = max_cycles
         self.enable_multi_stage_synthesis = enable_multi_stage_synthesis
         self.research_cycles: List[ResearchCycle] = []
+        self.llm_semaphore = asyncio.Semaphore(3)  # Max 3 concurrent LLM calls for performance
         
         # Agent prompts
         self.agent_prompts = {
@@ -228,11 +229,11 @@ class MultiAgentLegalResearcher:
                         opinion_text = re.sub(r'<[^>]+>', ' ', opinion_text)
                         opinion_text = re.sub(r'\s+', ' ', opinion_text).strip()
                     
-                    # Limit to reasonable size (4000 chars to avoid context overflow)
-                    if opinion_text:
-                        trimmed_text = opinion_text[:4000]
-                        case['opinion_text'] = trimmed_text
-                        logger.info(f"✓ Fetched {len(trimmed_text)} chars (from {len(opinion_text)}) for {case.get('case_name', 'Unknown')[:50]}")
+                    # Limit to reasonable size (2000 chars to optimize performance)
+                if opinion_text:
+                    trimmed_text = opinion_text[:2000]  # Reduced from 4000 for faster processing
+                    case['opinion_text'] = trimmed_text
+                    logger.info(f"✓ Fetched {len(trimmed_text)} chars (from {len(opinion_text)}) for {case.get('case_name', 'Unknown')[:50]}")
                     else:
                         logger.warning(f"✗ No opinion text in response for {case.get('case_name', 'Unknown')[:50]}")
                 else:
@@ -334,7 +335,7 @@ class MultiAgentLegalResearcher:
         # Process each case individually with all agents in parallel
         # This keeps prompts small: 1 case + agent instructions = ~2000 chars
         tasks = []
-        for case in cases[:5]:  # Top 5 cases per cycle
+        for case in cases[:3]:  # Top 3 cases per cycle (reduced from 5 for performance)
             case_text = self._get_case_text(case)
             if not case_text:
                 continue
@@ -1087,43 +1088,53 @@ Use proper legal citations and quote from the agent findings."""
         """Extract opinion text from case dict"""
         return case.get('opinion_text', case.get('snippet', ''))
     
-    async def _ask_llm(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.5, timeout: int = 30) -> str:
-        """Ask LLM with given prompt"""
-        try:
-            # Validate prompt size
-            prompt_length = len(prompt)
-            if prompt_length > 12000:  # ~3000 tokens at 4 chars/token
-                logger.warning(f"⚠️  Prompt very large: {prompt_length} chars, truncating...")
-                prompt = prompt[:12000]
-            
-            # Saul-7B requires alternating user/assistant roles - no system messages
-            # Prepend system instruction to the user prompt instead
-            full_prompt = "You are a specialized legal research assistant.\n\n" + prompt
-            
-            messages = [
-                {"role": "user", "content": full_prompt}
-            ]
-            
-            # Temporarily increase timeout for this request
-            original_timeout = self.llm.timeout
-            self.llm.timeout = timeout
-            
+    async def _ask_llm(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.5, timeout: int = 90) -> str:
+        """
+        Ask LLM with given prompt and timeout.
+        Uses semaphore to limit concurrent requests and prevent overwhelming vLLM.
+        
+        Args:
+            prompt: Prompt text
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            timeout: Request timeout in seconds (default: 90s for complex analysis)
+        """
+        async with self.llm_semaphore:  # Limit concurrent LLM calls
             try:
-                response = self.llm.chat_completion(
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
-                return response.strip()
-            finally:
-                # Restore original timeout
-                self.llm.timeout = original_timeout
-            
-        except Exception as e:
-            logger.error(f"LLM request failed: {e}")
-            logger.error(f"Prompt length: {len(prompt)} chars")
-            logger.error(f"Prompt preview: {prompt[:200]}...")
-            return ""
+                # Validate prompt size
+                prompt_length = len(prompt)
+                if prompt_length > 12000:  # ~3000 tokens at 4 chars/token
+                    logger.warning(f"⚠️  Prompt very large: {prompt_length} chars, truncating...")
+                    prompt = prompt[:12000]
+                
+                # Saul-7B requires alternating user/assistant roles - no system messages
+                # Prepend system instruction to the user prompt instead
+                full_prompt = "You are a specialized legal research assistant.\n\n" + prompt
+                
+                messages = [
+                    {"role": "user", "content": full_prompt}
+                ]
+                
+                # Temporarily increase timeout for this request
+                original_timeout = self.llm.timeout
+                self.llm.timeout = timeout
+                
+                try:
+                    response = self.llm.chat_completion(
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
+                    return response.strip()
+                finally:
+                    # Restore original timeout
+                    self.llm.timeout = original_timeout
+                
+            except Exception as e:
+                logger.error(f"LLM request failed: {e}")
+                logger.error(f"Prompt length: {len(prompt)} chars")
+                logger.error(f"Prompt preview: {prompt[:200]}...")
+                return ""
     
     def _create_batches(self, cases: List[Dict], batch_size: int) -> List[List[Dict]]:
         """Split cases into batches"""

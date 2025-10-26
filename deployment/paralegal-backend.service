@@ -1,0 +1,17 @@
+[Unit]
+Description=Paralegal AI Backend API Server
+After=network.target
+
+[Service]
+Type=simple
+User=amd-knights
+WorkingDirectory=/home/amd-knights/Paralegal
+Environment="PATH=/home/amd-knights/Paralegal/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/amd-knights/Paralegal/venv/bin/python /home/amd-knights/Paralegal/backend/api_server.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/amd-knights/Paralegal/logs/backend.log
+StandardError=append:/home/amd-knights/Paralegal/logs/backend-error.log
+
+[Install]
+WantedBy=multi-user.target

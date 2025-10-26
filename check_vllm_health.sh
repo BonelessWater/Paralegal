@@ -18,15 +18,15 @@ echo "3. Testing vLLM /v1/models endpoint..."
 curl -s http://localhost:8000/v1/models | jq '.' || echo "❌ vLLM server not responding"
 echo ""
 
-echo "4. Testing quick completion..."
-curl -s http://localhost:8000/v1/completions \
+echo "4. Testing quick completion (15s timeout)..."
+curl -s --max-time 15 http://localhost:8000/v1/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "Equall/Saul-7B-Instruct-v1",
     "prompt": "Legal research involves",
     "max_tokens": 10,
     "temperature": 0.7
-  }' | jq '.choices[0].text' || echo "❌ Completion test failed"
+  }' | jq '.choices[0].text' || echo "❌ Completion test failed or timed out"
 echo ""
 
 echo "======================================"
