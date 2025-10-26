@@ -213,7 +213,8 @@ async def voice_webhook(request: Request):
     print(f'📞 Lawgorithm: Incoming call from: {caller}')
     vr = VoiceResponse()
     cx = Connect()
-    cx.stream(url=f'wss://{SERVER_DOMAIN}/twilio-media')
+    # Configure stream with explicit track settings to prevent echo/feedback
+    cx.stream(url=f'wss://{SERVER_DOMAIN}/twilio-media', track='both_tracks')
     vr.append(cx)
     return PlainTextResponse(str(vr), media_type='application/xml')
 
@@ -336,12 +337,12 @@ async def twilio_media_stream(ws: WebSocket):
                 "input_audio_transcription": {"model": "whisper-1"},
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.5,
+                    "threshold": 0.6,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500
+                    "silence_duration_ms": 700
                 },
                 "tools": TOOLS_LEGAL,
-                "temperature": 0.5,
+                "temperature": 0.8,
                 "max_response_output_tokens": "inf"
             }
         }
