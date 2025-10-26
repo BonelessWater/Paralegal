@@ -14,6 +14,10 @@ from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
 from pathlib import Path
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file to get COURTLISTENER_API_TOKEN
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
