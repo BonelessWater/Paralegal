@@ -25,28 +25,14 @@ from dotenv import load_dotenv
 load_dotenv()  # Load .env file if it exists
 
 # FastAPI imports
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, status
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel
 import uvicorn
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-import time
 
 # Add project paths - add the parent directory so we can import AMD_server
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))  # This allows "from AMD_server..." to work
-
-# Import configuration
-try:
-    from config import config
-except ImportError:
-    config = None
-    logger.warning("⚠️  Config module not found, using defaults")
 
 # Import our components
 from llm_client import AMDLLMClient
@@ -73,27 +59,11 @@ logger = logging.getLogger(__name__)
 
 class IncomingTask(BaseModel):
     """Incoming task from client (email/text/call)"""
-    source: str = Field(..., description="Task source: email, text, or call")
-    content: str = Field(..., min_length=1, max_length=10000, description="Task content")
-    sender: Optional[str] = Field(None, max_length=500, description="Sender identifier")
-    subject: Optional[str] = Field(None, max_length=1000, description="Task subject")
-    priority: Optional[str] = Field("medium", description="Priority: low, medium, or high")
-
-    @validator("source")
-    def validate_source(cls, v):
-        """Ensure source is valid"""
-        allowed = ["email", "text", "call"]
-        if v not in allowed:
-            raise ValueError(f"source must be one of {allowed}")
-        return v
-
-    @validator("priority")
-    def validate_priority(cls, v):
-        """Ensure priority is valid"""
-        allowed = ["low", "medium", "high"]
-        if v not in allowed:
-            raise ValueError(f"priority must be one of {allowed}")
-        return v
+    source: str  # 'email', 'text', 'call'
+    content: str
+    sender: Optional[str] = None
+    subject: Optional[str] = None
+    priority: Optional[str] = "medium"
 
 class TaskApproval(BaseModel):
     """Approval data for AI-generated response"""
@@ -148,47 +118,17 @@ class SystemStats(BaseModel):
 app = FastAPI(
     title="Paralegal AI Backend",
     description="AMD-powered legal AI agent system with intelligent case research",
-    version="2.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    version="2.0.0"
 )
 
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# Security headers middleware
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    """Add security headers to all responses"""
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-
-    # Security headers
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Content-Security-Policy"] = "default-src 'self'"
-    response.headers["X-Process-Time"] = str(process_time)
-
-    return response
-
-# GZip compression middleware
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-
 # CORS middleware - allow frontend to connect
-cors_origins = config.CORS_ORIGINS if config else [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:4173",
-]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=[
+        "http://localhost:3000",  # React default
+        "http://localhost:5173",  # Vite default
+        "http://localhost:4173",  # Vite preview
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -473,8 +413,7 @@ async def process_task_background(task_id: str):
 # ============================================================================
 
 @app.get("/")
-@limiter.limit("60/minute")
-async def root(request: Request):
+async def root():
     """Root endpoint - API info"""
     return {
         "name": "Paralegal AI Backend",
@@ -489,8 +428,7 @@ async def root(request: Request):
     }
 
 @app.get("/health")
-@limiter.limit("120/minute")
-async def health_check(request: Request):
+async def health_check():
     """Health check endpoint"""
     vllm_status = llm_client.health_check() if llm_client else False
     scraper_status = intelligent_scraper is not None
@@ -504,8 +442,7 @@ async def health_check(request: Request):
     }
 
 @app.get("/tasks", response_model=List[Task])
-@limiter.limit("60/minute")
-async def get_tasks(request: Request, status: Optional[str] = None):
+async def get_tasks(status: Optional[str] = None):
     """
     Get all tasks, optionally filtered by status
 
@@ -531,8 +468,7 @@ async def get_task(task_id: str):
     return task
 
 @app.post("/tasks/ingest")
-@limiter.limit("30/minute")
-async def ingest_task(request: Request, task_data: IncomingTask, background_tasks: BackgroundTasks):
+async def ingest_task(task_data: IncomingTask, background_tasks: BackgroundTasks):
     """
     Ingest new task from client communication (email/text/call)
 
@@ -712,13 +648,10 @@ async def get_system_stats():
 # ============================================================================
 
 if __name__ == "__main__":
-    # Run on port 8080 (vLLM uses 8000)
-    port = config.PORT if config else int(os.getenv("PORT", "8080"))
-    host = config.HOST if config else os.getenv("HOST", "0.0.0.0")
-
+    # Run on port 8081 (vLLM uses 8000)
     uvicorn.run(
         app,
-        host=host,
-        port=port,
+        host="0.0.0.0",
+        port=8081,  # Changed from 8080 to avoid conflicts
         log_level="info"
     )
