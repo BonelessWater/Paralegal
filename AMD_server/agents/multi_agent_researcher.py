@@ -19,9 +19,13 @@ Workflow:
 
 import logging
 import asyncio
+import os
+import aiohttp
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
+from sentence_transformers import SentenceTransformer
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +90,131 @@ class MultiAgentLegalResearcher:
         
         logger.info(f"Initialized multi-agent researcher (batch_size={batch_size}, max_cycles={max_cycles})")
     
+    async def _filter_top_cases_with_rag(self, question: str, cases: List[Dict], top_n: int = 10) -> List[Dict]:
+        """
+        Use RAG embeddings to filter down to most relevant cases.
+        
+        Args:
+            question: Research question
+            cases: All scraped cases (with metadata, no opinion text)
+            top_n: Number of top cases to select
+            
+        Returns:
+            Top N most relevant cases
+        """
+        logger.info(f"🔍 Filtering {len(cases)} cases to top {top_n} using RAG embeddings...")
+        
+        # Load sentence transformer model
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        
+        # Embed the research question
+        question_embedding = model.encode([question], convert_to_numpy=True)[0]
+        
+        # Create text representations for each case (from metadata)
+        case_texts = []
+        for case in cases:
+            # Build text from available metadata
+            text_parts = []
+            if case.get('case_name'):
+                text_parts.append(f"Case: {case['case_name']}")
+            if case.get('citation'):
+                text_parts.append(f"Citation: {case['citation']}")
+            if case.get('court'):
+                text_parts.append(f"Court: {case['court']}")
+            if case.get('snippet'):
+                text_parts.append(f"Snippet: {case['snippet']}")
+            
+            case_texts.append(" | ".join(text_parts) if text_parts else "No case information")
+        
+        # Embed all case texts
+        case_embeddings = model.encode(case_texts, convert_to_numpy=True, show_progress_bar=False)
+        
+        # Calculate cosine similarities
+        similarities = np.dot(case_embeddings, question_embedding) / (
+            np.linalg.norm(case_embeddings, axis=1) * np.linalg.norm(question_embedding)
+        )
+        
+        # Get top N indices
+        top_indices = np.argsort(similarities)[::-1][:top_n]
+        
+        # Select top cases
+        top_cases = [cases[i] for i in top_indices]
+        
+        logger.info(f"✅ Selected top {len(top_cases)} cases (similarity range: {similarities[top_indices[-1]]:.3f} - {similarities[top_indices[0]]:.3f})")
+        
+        return top_cases
+    
+    async def _fetch_opinion_texts(self, cases: List[Dict]) -> List[Dict]:
+        """
+        Fetch full opinion text for selected cases from CourtListener API.
+        
+        Args:
+            cases: Cases with URLs but no opinion text
+            
+        Returns:
+            Cases enriched with opinion_text field
+        """
+        logger.info(f"📥 Fetching full opinion text for {len(cases)} cases...")
+        
+        api_token = os.getenv('COURTLISTENER_API_TOKEN', '')
+        if not api_token:
+            logger.warning("No CourtListener API token found - opinion text will remain empty")
+            return cases
+        
+        headers = {'Authorization': f'Token {api_token}'}
+        
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for case in cases:
+                url = case.get('url', '')
+                if url:
+                    tasks.append(self._fetch_single_opinion(session, case, url, headers))
+                else:
+                    tasks.append(asyncio.sleep(0, result=case))  # Return case unchanged
+            
+            enriched_cases = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Filter out exceptions
+        valid_cases = [c for c in enriched_cases if not isinstance(c, Exception)]
+        
+        # Count how many have opinion text
+        with_text = sum(1 for c in valid_cases if c.get('opinion_text'))
+        logger.info(f"✅ Fetched opinion text for {with_text}/{len(valid_cases)} cases")
+        
+        return valid_cases
+    
+    async def _fetch_single_opinion(self, session: aiohttp.ClientSession, case: Dict, url: str, headers: Dict) -> Dict:
+        """Fetch opinion text for a single case"""
+        try:
+            # Try to get HTML text endpoint
+            # CourtListener API: opinion URL like /opinion/123/case-name/
+            # Add ?format=json to get JSON response
+            api_url = url.rstrip('/') + '/?format=json'
+            
+            async with session.get(api_url, headers=headers, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # Opinion text is in 'html' or 'plain_text' or 'html_with_citations' field
+                    opinion_text = (
+                        data.get('html_with_citations') or 
+                        data.get('html') or 
+                        data.get('plain_text') or 
+                        data.get('html_lawbox') or
+                        ''
+                    )
+                    
+                    # Limit to reasonable size (first 10000 chars to avoid huge opinions)
+                    if opinion_text:
+                        case['opinion_text'] = opinion_text[:10000]
+                    
+                    logger.debug(f"✓ Fetched {len(opinion_text)} chars for {case.get('case_name', 'Unknown')[:50]}")
+                else:
+                    logger.debug(f"✗ Failed to fetch opinion (status {response.status}): {case.get('case_name', 'Unknown')[:50]}")
+        except Exception as e:
+            logger.debug(f"✗ Error fetching opinion: {e}")
+        
+        return case
+    
     async def research_async(self, 
                             question: str, 
                             cases: List[Dict],
@@ -95,7 +224,7 @@ class MultiAgentLegalResearcher:
         
         Args:
             question: Legal research question
-            cases: List of case dictionaries with opinion text
+            cases: List of case dictionaries (metadata only, no opinion text)
             previous_findings: Findings from previous cycles (for refinement)
             
         Returns:
@@ -104,16 +233,25 @@ class MultiAgentLegalResearcher:
         logger.info(f"🔬 Starting multi-agent research on {len(cases)} cases")
         logger.info(f"Question: {question}")
         
+        # STEP 1: Filter to top N cases using RAG embeddings
+        top_cases = await self._filter_top_cases_with_rag(question, cases, top_n=10)
+        
+        # STEP 2: Fetch full opinion text for top cases
+        enriched_cases = await self._fetch_opinion_texts(top_cases)
+        
+        # STEP 3: Run multi-agent analysis on enriched cases
+        logger.info(f"🎯 Running multi-agent analysis on {len(enriched_cases)} cases with opinion text")
+        
         all_findings = []
         
-        # Split cases into batches
-        case_batches = self._create_batches(cases, self.batch_size)
+        # Split cases into batches (should only be 1 batch of 10 now)
+        case_batches = self._create_batches(enriched_cases, self.batch_size)
         
         # Execute research cycles
         for cycle_num in range(self.max_cycles):
-            logger.info(f"\n{'='*70}")
-            logger.info(f"CYCLE {cycle_num + 1}/{self.max_cycles}")
-            logger.info(f"{'='*70}")
+            logger.debug(f"\n{'='*70}")
+            logger.debug(f"CYCLE {cycle_num + 1}/{self.max_cycles}")
+            logger.debug(f"{'='*70}")
             
             # Get batch for this cycle
             if cycle_num < len(case_batches):
@@ -188,7 +326,7 @@ class MultiAgentLegalResearcher:
     
     async def _run_case_analyst(self, question: str, cases: List[Dict], cycle: int) -> List[AgentFinding]:
         """Case Analyst: Extract facts and holdings from cases"""
-        logger.info(f"  🔍 Case Analyst analyzing {len(cases)} cases...")
+        logger.debug(f"  🔍 Case Analyst analyzing {len(cases)} cases...")
         
         findings = []
         
@@ -233,7 +371,7 @@ Be specific and quote the opinion."""
             except Exception as e:
                 logger.error(f"Case analyst error: {e}")
         
-        logger.info(f"    ✓ Case Analyst: {len(findings)} findings")
+        logger.debug(f"    ✓ Case Analyst: {len(findings)} findings")
         return findings
     
     async def _run_precedent_hunter(self, 
@@ -242,7 +380,7 @@ Be specific and quote the opinion."""
                                     cycle: int,
                                     previous_findings: List[AgentFinding]) -> List[AgentFinding]:
         """Precedent Hunter: Identify relevant precedents and distinguish cases"""
-        logger.info(f"  🎯 Precedent Hunter analyzing {len(cases)} cases...")
+        logger.debug(f"  🎯 Precedent Hunter analyzing {len(cases)} cases...")
         
         findings = []
         
@@ -293,12 +431,12 @@ Identify:
             except Exception as e:
                 logger.error(f"Precedent hunter error: {e}")
         
-        logger.info(f"    ✓ Precedent Hunter: {len(findings)} findings")
+        logger.debug(f"    ✓ Precedent Hunter: {len(findings)} findings")
         return findings
     
     async def _run_legal_principles(self, question: str, cases: List[Dict], cycle: int) -> List[AgentFinding]:
         """Legal Principles Agent: Extract legal doctrines and rules"""
-        logger.info(f"  ⚖️  Legal Principles analyzing {len(cases)} cases...")
+        logger.debug(f"  ⚖️  Legal Principles analyzing {len(cases)} cases...")
         
         findings = []
         
@@ -341,12 +479,12 @@ Quote specific passages."""
             except Exception as e:
                 logger.error(f"Legal principles error: {e}")
         
-        logger.info(f"    ✓ Legal Principles: {len(findings)} findings")
+        logger.debug(f"    ✓ Legal Principles: {len(findings)} findings")
         return findings
     
     async def _synthesize_findings(self, question: str, findings: List[AgentFinding], all_cases: List[Dict]) -> str:
         """Synthesis Agent: Combine all findings into comprehensive memo"""
-        logger.info(f"  📝 Synthesis Agent combining {len(findings)} findings...")
+        logger.debug(f"  📝 Synthesis Agent combining {len(findings)} findings...")
         
         # Organize findings by agent type
         case_analyses = [f for f in findings if f.agent_role == AgentRole.CASE_ANALYST]
@@ -408,7 +546,7 @@ Use proper legal citations and quote from the agent findings."""
 
         synthesis = await self._ask_llm(prompt, max_tokens=3500, temperature=0.4)
         
-        logger.info(f"    ✓ Synthesis complete ({len(synthesis)} chars)")
+        logger.debug(f"    ✓ Synthesis complete ({len(synthesis)} chars)")
         
         return synthesis
     
