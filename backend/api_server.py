@@ -288,45 +288,68 @@ def classify_task(content: str, source: str) -> str:
 async def process_task_background(task_id: str):
     """
     Background task processor.
-    
+
     1. Classify task → determine agent
     2. Call agent.process()
     3. Update task with AI response
     4. Set status to 'awaiting_approval'
     """
+    agent_id = None  # Initialize to avoid NameError in exception handler
     try:
         task = tasks_db.get(task_id)
         if not task:
             logger.error(f"Task {task_id} not found")
             return
-        
+
+        logger.info(f"Starting background processing for task {task_id}")
+
         # Update status
         task.status = 'processing'
         task.updated_at = datetime.now().isoformat()
-        
+
         # Classify and route to agent
         agent_id = classify_task(task.content, task.source)
         task.assigned_agent = agent_id
-        
+
         logger.info(f"Task {task_id} classified as: {agent_id}")
-        
+
         # Get agent
         agent_data = agents_db.get(agent_id)
         if not agent_data:
             raise Exception(f"Agent {agent_id} not found")
-        
+
         agent_instance = agent_data['instance']
         agent_data['status'] = 'processing'
         agent_data['current_task'] = task_id
-        
+
         # Process with agent (agent handles its own intelligent tools)
         start_time = datetime.now()
+
+        # Call agent's process method - properly handle both async and sync
+        if hasattr(agent_instance, 'process_async'):
+            logger.info(f"Calling async process_async for {agent_id}")
+            result = await agent_instance.process_async(task.content)
+        else:
+            logger.info(f"Calling sync process for {agent_id} in thread executor")
+            # Run synchronous process in thread pool to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, agent_instance.process, task.content)
         
-        # Call agent's process method
-        result = await agent_instance.process_async(task.content) if hasattr(agent_instance, 'process_async') else agent_instance.process(task.content)
-        
-        # Extract response from result
-        ai_response = result.get('response', result.get('output', result.get('analysis', 'Processing completed')))
+        # Extract response from result - handle different agent response formats
+        # LegalResearcherAgent: {'response': '...', 'analysis': '...'}
+        # ClientCommunicationAgent: {'polished_response': '...'}
+        # RecordsWranglerAgent: {'records_request': '...'}
+        # EvidenceSorterAgent: {'classification': '...'}
+        ai_response = (
+            result.get('response') or
+            result.get('polished_response') or
+            result.get('records_request') or
+            result.get('classification') or
+            result.get('analysis') or
+            str(result)  # Fallback to string representation
+        )
+
+        logger.info(f"Extracted AI response ({len(ai_response)} chars) from {agent_id}")
         
         # For legal researcher, update scraper metrics if available
         if agent_id == 'legal_researcher' and 'total_cases_found' in result:
@@ -352,24 +375,34 @@ async def process_task_background(task_id: str):
         # Update performance
         performance_metrics['tasks_completed'] += 1
         performance_metrics['total_processing_time'] += processing_time
-        
-        logger.info(f"✅ Task {task_id} processed in {processing_time:.2f}s")
-        
+
+        logger.info(f"✅ Task {task_id} completed successfully!")
+        logger.info(f"   Agent: {agent_id}")
+        logger.info(f"   Processing time: {processing_time:.2f}s")
+        logger.info(f"   Status: {task.status}")
+        logger.info(f"   Response length: {len(ai_response)} chars")
+
     except Exception as e:
         import traceback
-        logger.error(f"❌ Task processing failed: {e}")
-        logger.error(f"Full traceback:\n{traceback.format_exc()}")
+        logger.error(f"❌ TASK PROCESSING FAILED - Task ID: {task_id}")
+        logger.error(f"   Error: {e}")
+        logger.error(f"   Agent: {agent_id}")
+        logger.error(f"   Full traceback:\n{traceback.format_exc()}")
+
         task = tasks_db.get(task_id)
         if task:
             task.status = 'failed'
             task.metadata['error'] = str(e)
+            task.metadata['error_traceback'] = traceback.format_exc()
             task.updated_at = datetime.now().isoformat()
-        
+            logger.error(f"   Task {task_id} marked as 'failed'")
+
         # Update agent failure count
         if agent_id and agent_id in agents_db:
             agents_db[agent_id]['failures'] += 1
             agents_db[agent_id]['status'] = 'idle'
             agents_db[agent_id]['current_task'] = None
+            logger.error(f"   Agent {agent_id} returned to idle state")
 
 # ============================================================================
 # API ENDPOINTS
@@ -434,7 +467,7 @@ async def get_task(task_id: str):
 async def ingest_task(task_data: IncomingTask, background_tasks: BackgroundTasks):
     """
     Ingest new task from client communication (email/text/call)
-    
+
     This triggers background processing:
     1. Classify task
     2. Route to appropriate agent
@@ -443,7 +476,7 @@ async def ingest_task(task_data: IncomingTask, background_tasks: BackgroundTasks
     """
     # Create task
     task_id = str(uuid.uuid4())
-    
+
     task = Task(
         id=task_id,
         status='pending',
@@ -456,15 +489,16 @@ async def ingest_task(task_data: IncomingTask, background_tasks: BackgroundTasks
         updated_at=datetime.now().isoformat(),
         metadata={}
     )
-    
+
     tasks_db[task_id] = task
     performance_metrics['tasks_created'] += 1
-    
+
+    logger.info(f"📥 Task {task_id} created - Source: {task_data.source}, Content length: {len(task_data.content)} chars")
+
     # Start background processing
     background_tasks.add_task(process_task_background, task_id)
-    
-    logger.info(f"✅ Task {task_id} ingested from {task_data.source}")
-    
+    logger.info(f"🔄 Background processing queued for task {task_id}")
+
     return {
         "task_id": task_id,
         "status": "pending",
