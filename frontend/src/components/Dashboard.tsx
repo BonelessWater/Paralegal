@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -21,6 +21,7 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  CircularProgress,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -35,8 +36,11 @@ import {
   Info as InfoIcon,
   CalendarToday as CalendarTodayIcon,
   Person as PersonIcon,
-  FormatListNumbered as FormatListNumberedIcon,
+  FormatListNumberedIcon,
+  Speed as SpeedIcon,
+  Psychology as PsychologyIcon,
 } from '@mui/icons-material';
+import { getSystemStats, getTasks, type SystemStats, type Task as APITask } from '../services/api';
 
 interface Task {
   id: string;
@@ -59,6 +63,40 @@ const Dashboard: React.FC = () => {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  
+  // API State
+  const [stats, setStats] = useState<SystemStats | null>(null);
+  const [apiTasks, setApiTasks] = useState<APITask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch system stats and tasks
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [statsData, tasksData] = await Promise.all([
+          getSystemStats(),
+          getTasks()
+        ]);
+        setStats(statsData);
+        setApiTasks(tasksData);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to load dashboard data:', err);
+        setError('Failed to connect to backend. Please ensure the API server is running.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+
+    // Poll every 10 seconds for updates
+    const interval = setInterval(loadData, 10000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   const handleTakeAction = (task: Task) => {
     setSelectedTask(task);
@@ -292,105 +330,151 @@ const Dashboard: React.FC = () => {
     </Card>
   );
 
-  const renderQuickStats = () => (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
-        gap: 3,
-        mb: 4,
-      }}
-    >
-      <Card 
-        sx={{ 
-          bgcolor: '#fff3e0', 
-          borderLeft: '4px solid #ff9800',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          '&:hover': {
-            transform: 'translateY(-4px)',
-            boxShadow: 4,
-          },
+  const renderQuickStats = () => {
+    // Show loading state
+    if (loading && !stats) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+
+    return (
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+          gap: 3,
+          mb: 4,
         }}
-        onClick={() => setCurrentTab(0)}
       >
-        <CardContent>
-          <Typography variant="h3" sx={{ fontWeight: 700, color: '#ff9800' }}>
-            {urgentTasks.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Urgent Tasks Today
-          </Typography>
-        </CardContent>
-      </Card>
-      <Card 
-        sx={{ 
-          bgcolor: '#e3f2fd', 
-          borderLeft: '4px solid #2196f3',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          '&:hover': {
-            transform: 'translateY(-4px)',
-            boxShadow: 4,
-          },
-        }}
-        onClick={() => setCurrentTab(1)}
-      >
-        <CardContent>
-          <Typography variant="h3" sx={{ fontWeight: 700, color: '#2196f3' }}>
-            {pendingTasks.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Pending Tasks
-          </Typography>
-        </CardContent>
-      </Card>
-      <Card 
-        sx={{ 
-          bgcolor: '#e8f5e9', 
-          borderLeft: '4px solid #4caf50',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          '&:hover': {
-            transform: 'translateY(-4px)',
-            boxShadow: 4,
-          },
-        }}
-        onClick={() => setCurrentTab(2)}
-      >
-        <CardContent>
-          <Typography variant="h3" sx={{ fontWeight: 700, color: '#4caf50' }}>
-            {completedTasks.length}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Completed Today
-          </Typography>
-        </CardContent>
-      </Card>
-      <Card 
-        sx={{ 
-          bgcolor: '#fce4ec', 
-          borderLeft: '4px solid #e91e63',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          '&:hover': {
-            transform: 'translateY(-4px)',
-            boxShadow: 4,
-          },
-        }}
-        onClick={() => navigate('/inbox')}
-      >
-        <CardContent>
-          <Typography variant="h3" sx={{ fontWeight: 700, color: '#e91e63' }}>
-            12
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            New Messages
-          </Typography>
-        </CardContent>
-      </Card>
-    </Box>
-  );
+        <Card 
+          sx={{ 
+            bgcolor: '#fff3e0', 
+            borderLeft: '4px solid #ff9800',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: 4,
+            },
+          }}
+          onClick={() => setCurrentTab(0)}
+        >
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <AssignmentIcon sx={{ color: '#ff9800' }} />
+              <Typography variant="h3" sx={{ fontWeight: 700, color: '#ff9800' }}>
+                {stats?.total_tasks ?? urgentTasks.length}
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Total Tasks
+            </Typography>
+            {stats && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                {stats.tasks_processing} processing
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+        
+        <Card 
+          sx={{ 
+            bgcolor: '#e3f2fd', 
+            borderLeft: '4px solid #2196f3',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: 4,
+            },
+          }}
+          onClick={() => setCurrentTab(1)}
+        >
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <ScheduleIcon sx={{ color: '#2196f3' }} />
+              <Typography variant="h3" sx={{ fontWeight: 700, color: '#2196f3' }}>
+                {stats?.tasks_pending ?? pendingTasks.length}
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Pending Tasks
+            </Typography>
+            {stats && stats.tasks_awaiting_approval > 0 && (
+              <Typography variant="caption" sx={{ color: '#ff9800', display: 'block', mt: 0.5 }}>
+                {stats.tasks_awaiting_approval} awaiting approval
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+        
+        <Card 
+          sx={{ 
+            bgcolor: '#e8f5e9', 
+            borderLeft: '4px solid #4caf50',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: 4,
+            },
+          }}
+          onClick={() => setCurrentTab(2)}
+        >
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <CheckCircleIcon sx={{ color: '#4caf50' }} />
+              <Typography variant="h3" sx={{ fontWeight: 700, color: '#4caf50' }}>
+                {stats?.tasks_completed ?? completedTasks.length}
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Completed Tasks
+            </Typography>
+            {stats && stats.success_rate > 0 && (
+              <Typography variant="caption" color="success.main" sx={{ display: 'block', mt: 0.5 }}>
+                {stats.success_rate.toFixed(1)}% success rate
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+        
+        <Card 
+          sx={{ 
+            bgcolor: '#f3e5f5', 
+            borderLeft: '4px solid #9c27b0',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: 4,
+            },
+          }}
+          onClick={() => navigate('/agents')}
+        >
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <PsychologyIcon sx={{ color: '#9c27b0' }} />
+              <Typography variant="h3" sx={{ fontWeight: 700, color: '#9c27b0' }}>
+                {stats?.active_agents ?? 0}
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Active Agents
+            </Typography>
+            {stats && stats.cases_scraped_today > 0 && (
+              <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 0.5 }}>
+                {stats.cases_scraped_today.toLocaleString()} cases today
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  };
 
   return (
     <Box sx={{ p: 3 }}>
@@ -400,12 +484,100 @@ const Dashboard: React.FC = () => {
           My Work
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Focus on what matters most. {urgentTasks.length} urgent tasks need your attention.
+          {loading && !stats ? (
+            'Loading task data...'
+          ) : stats ? (
+            <>
+              {stats.tasks_awaiting_approval > 0 ? (
+                <>
+                  <strong>{stats.tasks_awaiting_approval}</strong> task{stats.tasks_awaiting_approval > 1 ? 's' : ''} awaiting approval.{' '}
+                  {stats.tasks_processing > 0 && `${stats.tasks_processing} more processing.`}
+                </>
+              ) : stats.tasks_processing > 0 ? (
+                <>
+                  <strong>{stats.tasks_processing}</strong> task{stats.tasks_processing > 1 ? 's are' : ' is'} being processed by AI agents.
+                </>
+              ) : (
+                `All caught up! ${stats.tasks_completed} tasks completed.`
+              )}
+            </>
+          ) : (
+            `Focus on what matters most. ${urgentTasks.length} urgent tasks need your attention.`
+          )}
         </Typography>
       </Box>
 
       {/* Quick Stats */}
       {renderQuickStats()}
+
+      {/* API Error Alert */}
+      {error && (
+        <Alert 
+          severity="warning" 
+          sx={{ mb: 3 }}
+          onClose={() => setError(null)}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+            {error}
+          </Typography>
+          <Typography variant="caption">
+            Showing cached data. The system will retry automatically.
+          </Typography>
+        </Alert>
+      )}
+
+      {/* Intelligent Scraper Performance Card */}
+      {stats && stats.cases_scraped_today > 0 && (
+        <Card sx={{ mb: 3, bgcolor: '#f5f5f5', border: '2px solid #9c27b0' }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <SpeedIcon sx={{ fontSize: 40, color: '#9c27b0' }} />
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#9c27b0' }}>
+                  Intelligent Scraper Active
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Real-time legal research across 10.6M opinions
+                </Typography>
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#9c27b0' }}>
+                  {stats.cases_scraped_today.toLocaleString()}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Cases Scraped Today
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3' }}>
+                  {stats.scraping_speed?.toFixed(1) ?? 'N/A'}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Cases/sec (Current)
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
+                  {stats.scraping_sessions ?? 0}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Scraping Sessions
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800' }}>
+                  {stats.tasks_processing}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Tasks Processing Now
+                </Typography>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Urgent Alert */}
       {urgentTasks.length > 0 && (
