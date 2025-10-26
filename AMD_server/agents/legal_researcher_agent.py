@@ -4,6 +4,7 @@ Provides case research and settlement guidance
 Enhanced with:
 - Intelligent Scraper (primary research tool for live case law)
 - RAG (Retrieval-Augmented Generation for similar case retrieval from local DB)
+- Multi-Agent Research (specialized agents working iteratively)
 """
 
 import logging
@@ -23,6 +24,14 @@ except ImportError:
     RAG_AVAILABLE = False
     print("⚠️  RAG embeddings not available - legal research will work without similar case retrieval")
 
+# Import multi-agent researcher
+try:
+    from agents.multi_agent_researcher import MultiAgentLegalResearcher
+    MULTI_AGENT_AVAILABLE = True
+except ImportError:
+    MULTI_AGENT_AVAILABLE = False
+    print("⚠️  Multi-agent research not available - using single-agent mode")
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,7 +40,8 @@ class LegalResearcherAgent:
     Agent that provides comprehensive legal research using:
     1. Intelligent Scraper - Live case law research across 10.6M opinions
     2. RAG - Similar case retrieval from local database
-    3. LLM Analysis - Expert legal analysis and settlement guidance
+    3. Multi-Agent Research - Specialized agents working iteratively (optional)
+    4. LLM Analysis - Expert legal analysis and settlement guidance
     """
     
     SYSTEM_PROMPT = """You are an expert legal research assistant specializing in personal injury law.
@@ -45,7 +55,7 @@ Guidelines:
 - Cite specific case examples when available
 - Be realistic, thorough, and professional"""
     
-    def __init__(self, llm_client, intelligent_scraper=None, use_rag: bool = True):
+    def __init__(self, llm_client, intelligent_scraper=None, use_rag: bool = True, use_multi_agent: bool = False):
         """
         Initialize Legal Researcher Agent
         
@@ -53,11 +63,14 @@ Guidelines:
             llm_client: AMDLLMClient instance for generating analysis
             intelligent_scraper: ScrapingOrchestrator instance for live case research (optional)
             use_rag: Enable RAG for similar case retrieval from local DB (default: True)
+            use_multi_agent: Enable multi-agent iterative research (default: False)
         """
         self.llm = llm_client
         self.intelligent_scraper = intelligent_scraper
         self.use_rag = use_rag and RAG_AVAILABLE
+        self.use_multi_agent = use_multi_agent and MULTI_AGENT_AVAILABLE
         self.ml_inference = None
+        self.multi_agent_researcher = None
         
         # Initialize RAG if available
         if self.use_rag:
@@ -75,6 +88,20 @@ Guidelines:
             except Exception as e:
                 logger.warning(f"Failed to load RAG embeddings: {e}")
                 logger.warning("Legal research will work without similar case retrieval")
+        
+        # Initialize multi-agent researcher if enabled
+        if self.use_multi_agent:
+            try:
+                logger.info("Initializing multi-agent research system...")
+                self.multi_agent_researcher = MultiAgentLegalResearcher(
+                    llm_client=llm_client,
+                    batch_size=10,    # Analyze 10 cases per cycle
+                    max_cycles=3       # 3 refinement cycles
+                )
+                logger.info("✅ Multi-agent research system loaded")
+            except Exception as e:
+                logger.warning(f"Failed to load multi-agent system: {e}")
+                self.use_multi_agent = False
                 self.use_rag = False
         
         scraper_status = "enabled" if self.intelligent_scraper else "disabled"
@@ -201,11 +228,38 @@ Generated Queries ({len(research_result.get('queries', []))})"""
             except Exception as e:
                 logger.error(f"RAG search error: {e}")
         
-        # Step 3: Generate expert legal analysis with LLM
-        try:
-            logger.info("Generating legal analysis with LLM...")
-            
-            analysis_prompt = f"""Legal Research Question:
+                # Step 3: Choose analysis method: Multi-Agent or Standard LLM
+        if self.use_multi_agent and self.multi_agent_researcher and cases_data and len(cases_data) >= 10:
+            # Use multi-agent iterative research for comprehensive analysis
+            try:
+                logger.info("🔬 Using multi-agent iterative research system...")
+                
+                multi_agent_results = await self.multi_agent_researcher.research_async(
+                    question=question,
+                    cases=cases_data,
+                    previous_findings=None
+                )
+                
+                analysis = multi_agent_results['synthesis']
+                
+                # Add multi-agent metadata
+                research_data['multi_agent_findings'] = multi_agent_results['agent_findings']
+                research_data['research_cycles'] = multi_agent_results['research_cycles']
+                research_data['total_agent_findings'] = multi_agent_results['total_findings']
+                
+                logger.info(f"✅ Multi-agent research complete: {multi_agent_results['total_findings']} findings across {multi_agent_results['cycles']} cycles")
+                
+            except Exception as e:
+                logger.error(f"Multi-agent research error: {e}, falling back to standard analysis")
+                # Fall through to standard LLM analysis
+                self.use_multi_agent = False
+        
+        # Step 3b: Standard LLM analysis (if multi-agent not used or failed)
+        if not self.use_multi_agent or not analysis:
+            try:
+                logger.info("Generating legal analysis with standard LLM...")
+                
+                analysis_prompt = f"""Legal Research Question:
 {question}
 
 {scraper_summary}
@@ -244,33 +298,35 @@ CRITICAL INSTRUCTIONS:
 - Be honest about limitations - if opinion text is unavailable, say so
 - Use proper legal citation format throughout"""
 
-            # Use chat_completion method from LLM client
-            messages = [
-                {"role": "system", "content": self.SYSTEM_PROMPT},
-                {"role": "user", "content": analysis_prompt}
-            ]
-            
-            analysis = self.llm.chat_completion(
-                messages=messages,
-                temperature=0.5,  # Lower for more factual analysis
-                max_tokens=2500   # Increased for detailed citations and analysis
-            )
-            
-            research_data['analysis'] = analysis.strip()
-            research_data['response'] = f"""LEGAL RESEARCH MEMO
+                # Use chat_completion method from LLM client
+                messages = [
+                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "user", "content": analysis_prompt}
+                ]
+                
+                analysis = self.llm.chat_completion(
+                    messages=messages,
+                    temperature=0.5,  # Lower for more factual analysis
+                    max_tokens=2500   # Increased for detailed citations and analysis
+                )
+                
+                research_data['analysis'] = analysis.strip()
+                research_data['response'] = f"""LEGAL RESEARCH MEMO
 
 {analysis.strip()}
 
 ---
 Research powered by Intelligent Scraping System
 {scraper_summary}"""
-            
-            logger.info("✅ Legal research completed successfully")
-            return research_data
-            
-        except Exception as e:
-            logger.error(f"Error generating legal analysis: {e}")
-            raise
+                
+            except Exception as e:
+                logger.error(f"Standard LLM analysis error: {e}")
+                # If we get here and don't have analysis, raise the error
+                if not analysis:
+                    raise
+        
+        logger.info("✅ Legal research completed successfully")
+        return research_data
     
     def process(self, question: str) -> Dict:
         """
