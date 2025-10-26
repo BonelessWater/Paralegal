@@ -20,6 +20,10 @@ from typing import List, Dict, Optional
 from pathlib import Path
 import uuid
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file if it exists
+
 # FastAPI imports
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
