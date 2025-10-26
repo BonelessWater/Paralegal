@@ -225,10 +225,11 @@ class MultiAgentLegalResearcher:
                         opinion_text = re.sub(r'<[^>]+>', ' ', opinion_text)
                         opinion_text = re.sub(r'\s+', ' ', opinion_text).strip()
                     
-                    # Limit to reasonable size (first 8000 chars to avoid huge opinions)
+                    # Limit to reasonable size (4000 chars to avoid context overflow)
                     if opinion_text:
-                        case['opinion_text'] = opinion_text[:8000]
-                        logger.info(f"✓ Fetched {len(opinion_text)} chars for {case.get('case_name', 'Unknown')[:50]}")
+                        trimmed_text = opinion_text[:4000]
+                        case['opinion_text'] = trimmed_text
+                        logger.info(f"✓ Fetched {len(trimmed_text)} chars (from {len(opinion_text)}) for {case.get('case_name', 'Unknown')[:50]}")
                     else:
                         logger.warning(f"✗ No opinion text in response for {case.get('case_name', 'Unknown')[:50]}")
                 else:
@@ -367,7 +368,7 @@ Citation: {case.get('citation', 'N/A')}
 Court: {case.get('court', 'Unknown')}
 
 OPINION EXCERPT:
-{case_text[:2000]}
+{case_text[:1500]}
 
 RESEARCH QUESTION:
 {question}
@@ -407,11 +408,11 @@ Be specific and quote the opinion."""
         
         findings = []
         
-        # Build context from previous findings
+        # Build context from previous findings (limit to 5 to avoid context overflow)
         previous_context = ""
         if previous_findings:
             previous_context = "\n\nPREVIOUSLY IDENTIFIED PRECEDENTS:\n"
-            for f in previous_findings[:10]:
+            for f in previous_findings[:5]:
                 if f.agent_role == AgentRole.PRECEDENT_HUNTER:
                     previous_context += f"- {f.case_name}: {f.finding[:100]}...\n"
         
@@ -428,7 +429,7 @@ CASE TO ANALYZE:
 Citation: {case.get('citation', 'N/A')}
 
 OPINION EXCERPT:
-{case_text[:2000]}
+{case_text[:1500]}
 
 RESEARCH QUESTION:
 {question}
@@ -475,7 +476,7 @@ CASE TO ANALYZE:
 {case.get('case_name', 'Unknown')}
 
 OPINION EXCERPT:
-{case_text[:2000]}
+{case_text[:1500]}
 
 RESEARCH QUESTION:
 {question}
@@ -580,6 +581,12 @@ Use proper legal citations and quote from the agent findings."""
     async def _ask_llm(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.5) -> str:
         """Ask LLM with given prompt"""
         try:
+            # Validate prompt size
+            prompt_length = len(prompt)
+            if prompt_length > 12000:  # ~3000 tokens at 4 chars/token
+                logger.warning(f"⚠️  Prompt very large: {prompt_length} chars, truncating...")
+                prompt = prompt[:12000]
+            
             messages = [
                 {"role": "system", "content": "You are a specialized legal research assistant."},
                 {"role": "user", "content": prompt}
@@ -592,6 +599,12 @@ Use proper legal citations and quote from the agent findings."""
             )
             
             return response.strip()
+            
+        except Exception as e:
+            logger.error(f"LLM request failed: {e}")
+            logger.error(f"Prompt length: {len(prompt)} chars")
+            logger.error(f"Prompt preview: {prompt[:200]}...")
+            return ""
             
         except Exception as e:
             logger.error(f"LLM error: {e}")
