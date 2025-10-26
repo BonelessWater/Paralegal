@@ -230,10 +230,10 @@ class MultiAgentLegalResearcher:
                         opinion_text = re.sub(r'\s+', ' ', opinion_text).strip()
                     
                     # Limit to reasonable size (2000 chars to optimize performance)
-                if opinion_text:
-                    trimmed_text = opinion_text[:2000]  # Reduced from 4000 for faster processing
-                    case['opinion_text'] = trimmed_text
-                    logger.info(f"✓ Fetched {len(trimmed_text)} chars (from {len(opinion_text)}) for {case.get('case_name', 'Unknown')[:50]}")
+                    if opinion_text:
+                        trimmed_text = opinion_text[:2000]  # Reduced from 4000 for faster processing
+                        case['opinion_text'] = trimmed_text
+                        logger.info(f"✓ Fetched {len(trimmed_text)} chars (from {len(opinion_text)}) for {case.get('case_name', 'Unknown')[:50]}")
                     else:
                         logger.warning(f"✗ No opinion text in response for {case.get('case_name', 'Unknown')[:50]}")
                 else:
